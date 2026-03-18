@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+.env
+.git
+.github
+.vscode
+.idea
+*.log
+campanha-viva.db
