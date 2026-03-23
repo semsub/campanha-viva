@@ -1,0 +1,22 @@
+# Dependências JavaScript
+node_modules/
+dist/
+build/
+.auth/
+
+# Cache e Python
+__pycache__/
+*.pyc
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Arquivos de sistema e IDEs
+.DS_Store
+.vscode/
+.idea/
+
+# Firebase
+.firebase/
