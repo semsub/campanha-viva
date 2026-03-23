@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "System administrators",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Candidate": {
+      "title": "Candidate",
+      "description": "Tenant profile for each candidate",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "bio": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "primaryColor": { "type": "string" },
+        "secondaryColor": { "type": "string" },
+        "domain": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "stats": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "slug", "ownerUid"]
+    },
+    "Layout": {
+      "title": "Layout",
+      "description": "Campaign frame layouts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "name": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "config": { "type": "object" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "candidateId", "name", "imageUrl"]
+    },
+    "SupporterUpload": {
+      "title": "SupporterUpload",
+      "description": "Images uploaded by supporters",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "layoutId": { "type": "string" },
+        "originalUrl": { "type": "string" },
+        "processedUrl": { "type": "string" },
+        "affiliateId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "candidateId", "layoutId", "originalUrl"]
+    },
+    "Affiliate": {
+      "title": "Affiliate",
+      "description": "Campaign affiliates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "stats": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "candidateId", "name", "code"]
+    },
+    "TrackingEvent": {
+      "title": "TrackingEvent",
+      "description": "System tracking events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "type": { "type": "string" },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": { "schema": "Admin", "description": "System administrators" },
+    "/candidates/{candidateId}": { "schema": "Candidate", "description": "Candidate tenants" },
+    "/candidates/{candidateId}/layouts/{layoutId}": { "schema": "Layout", "description": "Candidate layouts" },
+    "/candidates/{candidateId}/uploads/{uploadId}": { "schema": "SupporterUpload", "description": "Supporter uploads" },
+    "/candidates/{candidateId}/affiliates/{affiliateId}": { "schema": "Affiliate", "description": "Candidate affiliates" },
+    "/tracking_events/{eventId}": { "schema": "TrackingEvent", "description": "Global tracking events" }
+  }
+}
