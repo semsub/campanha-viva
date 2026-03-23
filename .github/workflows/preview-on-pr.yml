@@ -1,0 +1,20 @@
+name: Deploy to Firebase Hosting on PR
+'on': pull_request
+jobs:
+  build_and_deploy_preview:
+    if: '${{ github.event.pull_request.head.repo.full_name == github.repository }}'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Instalar Dependências e Gerar Build
+        run: |
+          # Mesma lógica do arquivo anterior (build_and_deploy_preview)
+          # npm ci && npm run build
+          # pip install -r requirements.txt
+          echo "No build step required"
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_CAMPANHAVIVA_PROJETO }}'
+          projectId: campanhaviva-projeto

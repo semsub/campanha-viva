@@ -1,0 +1,29 @@
+name: Deploy to Firebase Hosting on Merge
+'on':
+  push:
+    branches:
+      - main # OU a sua branch principal se não for main (ex: master)
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Instalar Dependências e Gerar Build
+        run: |
+          # COMENTE OU REMOVA AS LINHAS ABAIXO SE NÃO PRECISAR DE BUILD (ex: site estático HTML puro)
+          # npm ci && npm run build
+          # SE O SEU PROJETO NÃO TEM BUILD, VOCÊ PODE SIMPLESMENTE TER UM SITE ESTÁTICO EM UMA PASTA COMO "public"
+          
+          # SE O SEU PROJETO É UM SITE ESTÁTICO PURO, VOCÊ PODE PRECISAR DEIXAR ESTA SEÇÃO VAZIA
+          # OU SE PRECISAR INSTALAR DEPENDÊNCIAS DO PYTHON/FLASK:
+          # pip install -r requirements.txt
+          
+          # Exemplo para site estático puro:
+          echo "No build step required"
+      
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_CAMPANHAVIVA_PROJETO }}' # Verifique se este nome está IGUAL ao segredo no GitHub
+          projectId: campanhaviva-projeto
+          channelId: live
