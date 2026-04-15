@@ -13,10 +13,14 @@ import hashlib
 import json
 import secrets
 from urllib.parse import urlparse
+import bcrypt
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-CORS(app)
+
+# CORS: restrict to configured origins (comma-separated ALLOWED_ORIGINS env var)
+_allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5000').split(',')
+CORS(app, origins=[o.strip() for o in _allowed_origins], supports_credentials=True)
 
 # Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://localhost/campanhadb')
@@ -69,7 +73,14 @@ def init_db():
 init_db()
 
 # Constants
-ADM = {"login": "junior.araujo21", "senha": hashlib.sha256("230808".encode()).hexdigest()}
+# Admin credentials loaded from environment variables — never hardcode secrets
+_adm_login = os.environ.get('ADMIN_LOGIN', 'admin')
+_adm_senha = os.environ.get('ADMIN_PASSWORD', '')
+if _adm_senha:
+    _adm_senha_hash = bcrypt.hashpw(_adm_senha.encode(), bcrypt.gensalt()).decode()
+else:
+    _adm_senha_hash = ''
+ADM = {"login": _adm_login, "senha": _adm_senha_hash}
 
 CARGOS = [
     "Presidente", "Vice-Presidente", "Governador", "Vice-Governador",
@@ -92,10 +103,15 @@ def uid():
     return "c" + datetime.now().strftime("%s") + secrets.token_hex(4)
 
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using bcrypt (salted + key-stretched)"""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 def verify_password(password, hashed):
-    return hashlib.sha256(password.encode()).hexdigest() == hashed
+    """Verify password against bcrypt hash"""
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except (ValueError, AttributeError):
+        return False
 
 # Image processing functions
 def hex_to_rgba(hex_color, alpha=1.0):
@@ -368,6 +384,9 @@ def admin_login():
     login = data.get('login')
     senha = data.get('senha')
     
+    if not ADM['senha']:
+        return jsonify({"success": False, "error": "Admin account not configured"}), 401
+    
     if login == ADM['login'] and verify_password(senha, ADM['senha']):
         session['user_type'] = 'admin'
         session['user_id'] = 'admin'
@@ -567,12 +586,19 @@ def candidate_save_config():
 
 @app.route('/api/generate-image', methods=['POST'])
 def generate_image():
-    """Generate campaign image"""
+    """Generate campaign image (requires authentication)"""
+    if not session.get('user_type'):
+        return jsonify({"error": "Authentication required"}), 401
+    
     data = request.json
     candidate_id = data.get('candidate_id')
     layout_idx = data.get('layout', 0)
     phrase_idx = data.get('phrase', 0)
     supporter_photo = data.get('supporter_photo')  # base64 image
+    
+    # Validate layout index bounds
+    if not isinstance(layout_idx, int) or layout_idx < 0 or layout_idx >= len(LAYOUTS):
+        return jsonify({"error": "Invalid layout index"}), 400
     
     conn = get_db()
     cur = conn.cursor()
@@ -584,9 +610,11 @@ def generate_image():
     if not candidate:
         return jsonify({"error": "Candidate not found"}), 404
     
-    # Get selected phrase
+    # Get selected phrase with bounds validation
     phrases = candidate['config'].get('frases', ["EU APOIO!"])
-    phrase = phrases[phrase_idx] if phrase_idx < len(phrases) else phrases[0]
+    if not isinstance(phrase_idx, int) or phrase_idx < 0 or phrase_idx >= len(phrases):
+        phrase_idx = 0
+    phrase = phrases[phrase_idx]
     
     # Generate image
     layout_fn = LAYOUTS[layout_idx]['fn']
@@ -626,4 +654,4 @@ def get_session():
     return jsonify({"type": "guest"})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true')

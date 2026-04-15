@@ -12,7 +12,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(cors());
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5000').split(',').map(o => o.trim());
+  app.use(cors({ origin: allowedOrigins, credentials: true }));
   app.use(express.json({ limit: '50mb' }));
 
   // Start Python Backend in background

@@ -26,8 +26,8 @@ export default function App() {
         
         if (adminSnap.exists()) {
           setUserRole('admin');
-        } else if (authUser.email === 'semsub@gmail.com') {
-          // Bootstrap first admin
+        } else if (import.meta.env.VITE_BOOTSTRAP_ADMIN_EMAIL && authUser.email === import.meta.env.VITE_BOOTSTRAP_ADMIN_EMAIL) {
+          // Bootstrap first admin — email configured via env var, not hardcoded
           await setDoc(adminRef, {
             uid: authUser.uid,
             email: authUser.email,

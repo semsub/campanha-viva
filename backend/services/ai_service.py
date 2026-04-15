@@ -11,8 +11,7 @@ class AIService:
         """
         Generates a creative slogan for a campaign using OpenRouter (Gemini 2.0 Flash).
         """
-        # Hardcoded for demo purposes as requested. Use environment variables in production.
-        api_key = "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"
+        api_key = os.getenv("OPENROUTER_API_KEY", "")
         if not api_key:
             return "Slogan generation failed: API key missing"
             

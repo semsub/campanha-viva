@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_API_KEY = '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'; // WARNING: Hardcoded for demo purposes. Use environment variables in production.
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
 const SITE_URL = process.env.VITE_APP_URL || 'http://localhost:3000';
 const SITE_NAME = 'CAMPANHAVIVA';
 
@@ -12,7 +12,7 @@ export const generateCampaignSlogan = async (candidateName: string, bio: string)
   }
 
   const headers = {
-    'Authorization': `Bearer ${OPENROUTER_API_KEY}`, // Using hardcoded key as requested
+    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
     'HTTP-Referer': SITE_URL,
     'X-Title': SITE_NAME,
     'Content-Type': 'application/json',
