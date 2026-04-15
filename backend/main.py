@@ -12,12 +12,13 @@ load_dotenv()
 
 app = FastAPI(title="CampanhaViva SaaS API", version="1.0.0")
 
-# CORS Configuration
+# CORS Configuration — restrict to configured origins
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in _allowed_origins],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -32,11 +33,13 @@ async def root():
 
 @app.post("/api/process-image")
 async def process_image(request: ImageProcessRequest):
+    if not request.tenant_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
         processed_image = process_supporter_image(request.user_image, request.layout_image)
         return {"processed_image": processed_image, "status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Image processing failed")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
