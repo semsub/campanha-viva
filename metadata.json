@@ -1,0 +1,9 @@
+{
+  "name": "CampanhaViva SaaS",
+  "description": "Plataforma SaaS Multi-Tenant de Engajamento Político e Social com IA, Editor Avançado e Gestão de Candidatos.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

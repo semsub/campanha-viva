@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+Pillow
+opencv-python-headless
+sqlalchemy
+psycopg2-binary
+redis
+celery
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+requests
+gunicorn
