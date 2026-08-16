@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-blue: #0B2545;
+  --color-brand-blue-mid: #134074;
+  --color-brand-blue-light: #1B6CA8;
+  --color-brand-blue-accent: #2C8FD9;
+  --color-brand-orange: #E8751A;
+  --color-brand-orange-light: #F59E42;
+  --color-brand-orange-glow: #FFBA6B;
+  --color-brand-gold: #D4A843;
+  --color-brand-white: #FFFFFF;
+  --color-brand-cream: #FDF8F0;
+  --color-brand-gray: #F5F7FA;
+  --color-brand-dark: #0A1628;
+}
+
+@layer base {
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-orange);
+    color: white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #c4c9d2;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #9ba3ae;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-brand-orange to-brand-orange-light text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-brand-orange/25 transition-all duration-300 font-semibold text-sm tracking-wide disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer;
+  }
+  .btn-secondary {
+    @apply bg-white text-brand-blue border border-gray-200 px-5 py-2.5 rounded-xl hover:bg-brand-gray hover:border-brand-blue-light/20 transition-all duration-300 font-medium text-sm cursor-pointer;
+  }
+  .btn-danger {
+    @apply bg-gradient-to-r from-red-600 to-red-500 text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-red-500/25 transition-all duration-300 font-semibold text-sm cursor-pointer;
+  }
+  .btn-success {
+    @apply bg-gradient-to-r from-emerald-600 to-emerald-500 text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-emerald-500/25 transition-all duration-300 font-semibold text-sm cursor-pointer;
+  }
+  .btn-outline {
+    @apply border-2 border-brand-orange text-brand-orange px-5 py-2.5 rounded-xl hover:bg-brand-orange hover:text-white transition-all duration-300 font-semibold text-sm cursor-pointer;
+  }
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-orange/40 focus:border-brand-orange text-sm transition-all duration-200 placeholder:text-gray-400;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100/80 p-6 backdrop-blur-sm;
+  }
+  .card-hover {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100/80 p-6 backdrop-blur-sm hover:shadow-xl hover:shadow-brand-blue/5 hover:border-brand-blue-light/20 transition-all duration-500;
+  }
+  .stat-card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100/80 p-5 hover:shadow-xl hover:shadow-brand-blue/5 transition-all duration-500 relative overflow-hidden;
+  }
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-blue-200/70 hover:bg-white/10 hover:text-white transition-all duration-200 text-[13px] cursor-pointer;
+  }
+  .sidebar-link-active {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-orange to-brand-orange-light text-white text-[13px] font-semibold shadow-lg shadow-brand-orange/20;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold tracking-wide;
+  }
+  .table-header {
+    @apply px-4 py-3.5 text-left text-[11px] font-bold text-brand-blue/60 uppercase tracking-wider;
+  }
+  .table-cell {
+    @apply px-4 py-3.5 text-sm text-gray-700;
+  }
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl border border-white/20;
+  }
+  .gradient-blue {
+    background: linear-gradient(135deg, #0B2545 0%, #134074 40%, #1B6CA8 100%);
+  }
+  .gradient-orange {
+    background: linear-gradient(135deg, #E8751A 0%, #F59E42 100%);
+  }
+  .text-gradient {
+    background: linear-gradient(135deg, #E8751A, #F59E42, #FFBA6B);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
