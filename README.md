@@ -8,6 +8,30 @@ Plataforma de gestão territorial de campanha com controle hierárquico, demanda
 
 ---
 
+## ⚠️ Deploy no Render - Limpeza de Cache
+
+Se você está vendo erros de arquivos antigos (Firebase, framer-motion, react-konva):
+
+### Solução Rápida:
+
+1. **No Dashboard do Render:**
+   - Vá em seu projeto
+   - Clique em **"Manual Deploy"**
+   - Marque **"Clear build cache"**
+   - Clique em **"Deploy"**
+
+2. **Via Git:**
+   ```bash
+   git commit --allow-empty -m "Force rebuild"
+   git push origin main
+   ```
+
+3. **Ou delete e recrie o serviço no Render**
+
+---
+
+---
+
 ## 📋 Índice
 
 1. [Pré-requisitos](#pré-requisitos)
