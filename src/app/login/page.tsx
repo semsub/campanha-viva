@@ -1,12 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("admin@campanhaviva.com.br");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +46,14 @@ export default function LoginPage() {
         />
         <div className="relative z-10 flex flex-col items-center text-center">
           <div className="rounded-3xl bg-white p-4 shadow-2xl">
-            <Image
+            {/* img normal para não depender do otimizador do Next */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="/images/logo.png"
               alt="Júnior Araújo Coordenação"
               width={280}
               height={280}
-              priority
+              style={{ display: "block" }}
             />
           </div>
           <h1 className="mt-8 text-3xl font-extrabold">
@@ -74,7 +75,8 @@ export default function LoginPage() {
 
         <div className="w-full max-w-sm">
           <div className="md:hidden flex justify-center mb-6">
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="/images/logo.png"
               alt="Júnior Araújo Coordenação"
               width={140}
@@ -130,7 +132,7 @@ export default function LoginPage() {
 
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 break-words">
-                {error}
+                <b>Erro:</b> {error}
               </div>
             )}
 
