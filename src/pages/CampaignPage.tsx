@@ -6,7 +6,7 @@ import {
   Upload, Download, Share2, Zap, Layout, 
   CheckCircle2, Loader2, Sparkles, Camera, 
   ArrowRight, ChevronLeft, ChevronRight, 
-  Instagram, Facebook, Twitter, Globe
+  Globe
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { Stage, Layer, Image as KonvaImage, Rect, Circle, Text, Group } from 'react-konva';
@@ -203,7 +203,7 @@ export default function CampaignPage({ slug }: { slug: string }) {
           <div className="pt-12 border-t border-white/5 flex items-center gap-8">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Siga o candidato:</p>
             <div className="flex gap-4">
-              {[Instagram, Facebook, Twitter, Globe].map((Icon, i) => (
+              {[Globe].map((Icon, i) => (
                 <a key={i} href="#" className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center hover:bg-white/10 hover:text-emerald-500 transition-all">
                   <Icon size={20} />
                 </a>
