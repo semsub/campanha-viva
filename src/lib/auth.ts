@@ -1,88 +1,63 @@
-import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "super-secret-key-change-in-production-2024"
-);
+const SECRET = process.env.SESSION_SECRET ?? "junior-araujo-coordenacao-2026";
+const COOKIE = "jac_session";
+const TTL_HOURS = 8;
 
-export interface SessionUser {
+export type SessionUser = {
   id: number;
   name: string;
   email: string;
-  role: string;
-  campaignId: number | null;
-  parentUserId: number | null;
+  role: "super_admin" | "coordinator" | "leader";
+  territory: string | null;
+};
+
+function sign(payload: string): string {
+  return crypto.createHmac("sha256", SECRET).update(payload).digest("hex");
 }
 
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
+export function hashPassword(plain: string): string {
+  return bcrypt.hashSync(plain, 12);
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+export function verifyPassword(plain: string, hash: string): boolean {
+  return bcrypt.compareSync(plain, hash);
 }
 
-export async function createToken(user: SessionUser): Promise<string> {
-  return new SignJWT({ user })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("24h")
-    .setIssuedAt()
-    .sign(JWT_SECRET);
+export async function createSession(user: SessionUser) {
+  const exp = Date.now() + TTL_HOURS * 3600 * 1000;
+  const payload = Buffer.from(JSON.stringify({ ...user, exp })).toString("base64url");
+  const token = `${payload}.${sign(payload)}`;
+  const store = await cookies();
+  store.set(COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: TTL_HOURS * 3600,
+    path: "/",
+  });
 }
 
-export async function verifyToken(token: string): Promise<SessionUser | null> {
+export async function getSession(): Promise<SessionUser | null> {
+  const store = await cookies();
+  const token = store.get(COOKIE)?.value;
+  if (!token) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig || sign(payload) !== sig) return null;
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return (payload as unknown as { user: SessionUser }).user;
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as SessionUser & {
+      exp: number;
+    };
+    if (data.exp < Date.now()) return null;
+    return { id: data.id, name: data.name, email: data.email, role: data.role, territory: data.territory };
   } catch {
     return null;
   }
 }
 
-export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("session_token")?.value;
-  if (!token) return null;
-  return verifyToken(token);
-}
-
-export async function requireAuth(): Promise<SessionUser> {
-  const user = await getSession();
-  if (!user) {
-    throw new Error("Unauthorized");
-  }
-  return user;
-}
-
-export function canManageCoordinators(role: string): boolean {
-  return ["super_admin", "admin"].includes(role);
-}
-
-export function canManageLeaderships(role: string): boolean {
-  return ["super_admin", "admin", "coordenador_geral", "coordenador_regional", "coordenador_municipal"].includes(role);
-}
-
-export function canManageVoters(role: string): boolean {
-  return ["super_admin", "admin", "coordenador_geral", "coordenador_regional", "coordenador_municipal", "lideranca", "mobilizador"].includes(role);
-}
-
-export function canManageDemands(role: string): boolean {
-  return ["super_admin", "admin", "coordenador_geral", "coordenador_regional", "coordenador_municipal", "lideranca", "atendente"].includes(role);
-}
-
-export function canViewAudit(role: string): boolean {
-  return ["super_admin", "admin", "auditor"].includes(role);
-}
-
-export function canExportData(role: string): boolean {
-  return ["super_admin", "admin", "coordenador_geral"].includes(role);
-}
-
-export function isCoordinator(role: string): boolean {
-  return ["coordenador_geral", "coordenador_regional", "coordenador_municipal"].includes(role);
-}
-
-export function isAdmin(role: string): boolean {
-  return ["super_admin", "admin"].includes(role);
+export async function clearSession() {
+  const store = await cookies();
+  store.delete(COOKIE);
 }

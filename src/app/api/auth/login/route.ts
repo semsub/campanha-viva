@@ -1,68 +1,58 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { users } from "@/db/schema";
+import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
-import { verifyPassword, createToken } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
+import { db } from "@/db";
+import { users, auditLogs } from "@/db/schema";
+import { verifyPassword, createSession } from "@/lib/auth";
 
-export async function POST(request: NextRequest) {
+// O e-mail + senha definem automaticamente o painel conforme o role:
+// super_admin → console total | coordinator → região | leader → campo
+export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await request.json();
-
+    const { email, password } = (await req.json()) as { email?: string; password?: string };
     if (!email || !password) {
-      return NextResponse.json({ error: "Email e senha obrigatórios" }, { status: 400 });
+      return Response.json({ error: "Informe e-mail e senha." }, { status: 400 });
     }
 
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase().trim()));
+    const ip = req.headers.get("x-forwarded-for") ?? null;
 
-    if (!user) {
-      return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 });
+    if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
+      if (user) {
+        await db.insert(auditLogs).values({
+          userId: user.id,
+          action: "login_failed",
+          entity: "users",
+          entityId: user.id,
+          ip,
+        });
+      }
+      return Response.json({ error: "Credenciais inválidas ou usuário inativo." }, { status: 401 });
     }
 
-    if (!user.active) {
-      return NextResponse.json({ error: "Usuário desativado" }, { status: 403 });
-    }
-
-    const validPassword = await verifyPassword(password, user.passwordHash);
-    if (!validPassword) {
-      return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 });
-    }
-
-    const sessionUser = {
+    await createSession({
       id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
-      campaignId: user.campaignId,
-      parentUserId: user.parentUserId,
-    };
+      territory: user.territory,
+    });
 
-    const token = await createToken(sessionUser);
-
-    // Update last login
-    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
-
-    // Audit
-    await logAudit({
+    await db.insert(auditLogs).values({
       userId: user.id,
-      action: "login",
+      action: "login_success",
       entity: "users",
       entityId: user.id,
-      ipAddress: request.headers.get("x-forwarded-for") || "unknown",
+      ip,
     });
 
-    const response = NextResponse.json({ user: sessionUser });
-    response.cookies.set("session_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 86400,
-      path: "/",
-    });
-
-    return response;
-  } catch (error) {
-    console.error("Login error:", error);
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+    return Response.json({ ok: true, role: user.role, name: user.name });
+  } catch (e) {
+    // Exibe a causa real (banco não configurado, tabela ausente, SSL, etc.)
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("login error:", msg);
+    return Response.json(
+      { error: `Falha no servidor: ${msg}` },
+      { status: 500 },
+    );
   }
 }

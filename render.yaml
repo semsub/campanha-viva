@@ -1,17 +1,17 @@
 services:
   - type: web
-    name: campanhaviva-coordenacao
-    env: node
-    region: oregon
+    name: campanha-viva
+    runtime: node
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: NODE_VERSION
+        value: "22"
       - key: DATABASE_URL
-        sync: false
-      - key: JWT_SECRET
+        sync: false        # cole a Connection String do Neon no painel
+      - key: SESSION_SECRET
         generateValue: true
-    healthCheckPath: /api/health
-    autoDeploy: true
+      - key: SETUP_TOKEN
+        generateValue: true
