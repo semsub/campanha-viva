@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "../../../lib/db";
-import { users } from "../../../lib/db/schema";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
 import { like, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { getSession } from "../../../lib/auth";
+import { getSession } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
