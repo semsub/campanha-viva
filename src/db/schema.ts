@@ -23,6 +23,8 @@ export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento",
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  description: text("description"),
+  state: text("state").default("PA"),
   createdAt: timestamp("created_at").defaultNow(),
   active: boolean("active").default(true),
 });
@@ -151,11 +153,3 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const campaigns = pgTable("campaigns", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  state: text("state").default("PA"),
-  createdAt: timestamp("created_at").defaultNow(),
-  active: boolean("active").default(true),
-});
