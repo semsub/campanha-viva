@@ -150,3 +150,12 @@ export const auditLogs = pgTable("audit_logs", {
   ip: text("ip"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const campaigns = pgTable("campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  state: text("state").default("PA"),
+  createdAt: timestamp("created_at").defaultNow(),
+  active: boolean("active").default(true),
+});
