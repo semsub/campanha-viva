@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("admin@campanhaviva.com.br");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("230808Deus#");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
