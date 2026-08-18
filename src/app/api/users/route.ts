@@ -1,17 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, ilike, or, sql } from "drizzle-orm";
+import { desc, ilike, or, sql, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { users, auditLogs } from "@/db/schema";
 import { getSession, hashPassword } from "@/lib/auth";
 import { canManageUsers } from "@/lib/permissions";
 
-
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+// Função auxiliar para buscar recursivamente todos os IDs subordinados abaixo de um gestor
+async function getSubordinateIds(managerId: number): Promise<number[]> {
+  const directReports = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`manager_id = ${managerId}`);
+
+  let ids = directReports.map((r) => r.id);
+  for (const id of ids) {
+    const subIds = await getSubordinateIds(id);
+    ids = ids.concat(subIds);
+  }
+  return ids;
+}
+
 export async function GET(req: NextRequest) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+
   const q = new URL(req.url).searchParams.get("q")?.trim();
+
+  let allowedIds: number[] = [];
+  if (s.role === "super_admin") {
+    // Super admin enxerga tudo
+    const allUsers = await db.select({ id: users.id }).from(users);
+    allowedIds = allUsers.map((u) => u.id);
+  } else {
+    // Coordenador enxerga a si mesmo e toda a sua rede abaixo
+    const subIds = await getSubordinateIds(s.id);
+    allowedIds = [s.id, ...subIds];
+  }
+
+  if (allowedIds.length === 0) {
+    return NextResponse.json({ users: [] });
+  }
+
   const rows = await db
     .select({
       id: users.id,
@@ -24,8 +56,15 @@ export async function GET(req: NextRequest) {
       createdAt: users.createdAt,
     })
     .from(users)
-    .where(q ? or(ilike(users.name, `%${q}%`), ilike(users.email, `%${q}%`)) : sql`TRUE`)
+    .where(
+      sql`id = ANY(${allowedIds}) AND (${
+        q
+          ? sql`(name ILIKE ${`%${q}%`} OR email ILIKE ${`%${q}%`})`
+          : sql`TRUE`
+      })`
+    )
     .orderBy(desc(users.createdAt));
+
   return NextResponse.json({ users: rows });
 }
 
@@ -35,22 +74,29 @@ export async function POST(req: NextRequest) {
   if (!canManageUsers(s.role)) {
     return NextResponse.json({ error: "sem permissão" }, { status: 403 });
   }
+
   const b = (await req.json()) as {
-    name?: string; email?: string; phone?: string;
-    password?: string; role?: "super_admin" | "coordinator" | "leader";
+    name?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    role?: "super_admin" | "coordinator" | "coordenador_regional" | "leader" | "lideranca";
     territory?: string;
   };
+
   if (!b.name || !b.email || !b.password) {
     return NextResponse.json({ error: "nome, email e senha são obrigatórios" }, { status: 400 });
   }
   if (b.password.length < 6) {
     return NextResponse.json({ error: "a senha deve ter ao menos 6 caracteres" }, { status: 400 });
   }
-  // Somente super_admin pode criar outro super_admin
+
   const role = b.role ?? "leader";
+  // Apenas super_admin pode criar outro super_admin
   if (role === "super_admin" && s.role !== "super_admin") {
     return NextResponse.json({ error: "somente super_admin pode criar outro super_admin" }, { status: 403 });
   }
+
   try {
     const [row] = await db
       .insert(users)
@@ -64,6 +110,7 @@ export async function POST(req: NextRequest) {
         managerId: s.id,
       })
       .returning({ id: users.id });
+
     await db.insert(auditLogs).values({
       actorId: s.id,
       userId: row.id,
@@ -73,6 +120,7 @@ export async function POST(req: NextRequest) {
       detail: `Criou usuário ${b.email} (${role})`,
       ip: req.headers.get("x-forwarded-for"),
     });
+
     return NextResponse.json({ ok: true, id: row.id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

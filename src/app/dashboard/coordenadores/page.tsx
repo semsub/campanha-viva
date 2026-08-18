@@ -22,18 +22,29 @@ export default function CoordinatorsPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
   const [formData, setFormData] = useState({
-    name: "", email: "", password: "", role: "coordenador_regional", phone: "",
+    name: "", email: "", password: "", role: "coordinator", phone: "", territory: "",
   });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (search) params.set("q", search);
+
+    const sessionRes = await fetch("/api/auth/session");
+    if (sessionRes.ok) {
+      const sessionData = await sessionRes.json();
+      if (sessionData?.user) {
+        setCurrentUserRole(sessionData.user.role);
+      }
+    }
+
     const res = await fetch(`/api/users?${params}`);
     const data = await res.json();
-    setCoordinators(data.users.filter((u: User) =>
-      ["coordenador_geral", "coordenador_regional", "coordenador_municipal"].includes(u.role)
+    const allUsers = data.users || [];
+    setCoordinators(allUsers.filter((u: User) =>
+      ["coordinator", "coordenador_regional", "coordenador_geral", "coordenador_municipal"].includes(u.role)
     ));
     setLoading(false);
   }, [search]);
@@ -49,21 +60,36 @@ export default function CoordinatorsPage() {
     });
     if (res.ok) {
       setShowForm(false);
-      setFormData({ name: "", email: "", password: "", role: "coordenador_regional", phone: "" });
+      setFormData({ name: "", email: "", password: "", role: "coordinator", phone: "", territory: "" });
       loadData();
     } else {
       const data = await res.json();
-      alert(data.error || "Erro ao criar");
+      alert(data.error || "Erro ao criar coordenador");
     }
   };
 
   const toggleActive = async (user: User) => {
-    await fetch(`/api/users/${user.id}`, {
+    const res = await fetch(`/api/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !user.active }),
     });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "Erro ao alterar status");
+    }
     loadData();
+  };
+
+  const handleDelete = async (user: User) => {
+    if (!confirm(`Deseja remover permanentemente o coordenador ${user.name}?`)) return;
+    const res = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+    if (res.ok) {
+      loadData();
+    } else {
+      const data = await res.json();
+      alert(data.error || "Erro ao remover");
+    }
   };
 
   const handleChangePassword = async () => {
@@ -74,12 +100,13 @@ export default function CoordinatorsPage() {
     const res = await fetch(`/api/users/${editingUser.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newPassword }),
+      body: JSON.stringify({ password: newPassword }),
     });
     if (res.ok) {
-      setPasswordMsg("✅ Senha alterada!");
+      setPasswordMsg("✅ Senha alterada com sucesso!");
       setNewPassword("");
       setTimeout(() => { setEditingUser(null); setPasswordMsg(""); }, 2000);
+      loadData();
     } else {
       setPasswordMsg("❌ Erro ao alterar senha");
     }
@@ -90,7 +117,7 @@ export default function CoordinatorsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-brand-blue" style={{ fontFamily: "'Playfair Display', serif" }}>Coordenadores</h1>
-          <p className="text-sm text-gray-400">{coordinators.length} cadastrados</p>
+          <p className="text-sm text-gray-400">{coordinators.length} cadastrados na sua rede</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           {showForm ? "✕ Fechar" : "+ Novo Coordenador"}
@@ -112,11 +139,12 @@ export default function CoordinatorsPage() {
                 <input type="password" className="input-field" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required minLength={6} /></div>
               <div><label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Telefone</label>
                 <input className="input-field" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /></div>
+              <div><label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Território</label>
+                <input className="input-field" value={formData.territory} onChange={(e) => setFormData({ ...formData, territory: e.target.value })} /></div>
               <div><label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Perfil *</label>
                 <select className="input-field" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}>
-                  <option value="coordenador_geral">Coordenador Geral</option>
+                  <option value="coordinator">Coordenador</option>
                   <option value="coordenador_regional">Coordenador Regional</option>
-                  <option value="coordenador_municipal">Coordenador Municipal</option>
                 </select></div>
             </div>
             <div className="flex gap-2">
@@ -159,14 +187,17 @@ export default function CoordinatorsPage() {
               <tr key={u.id} className="hover:bg-brand-cream/50 transition-colors">
                 <td className="table-cell font-semibold text-brand-blue">{u.name}</td>
                 <td className="table-cell text-gray-500">{u.email}</td>
-                <td className="table-cell"><span className="badge bg-brand-blue/10 text-brand-blue">{roleLabels[u.role]}</span></td>
+                <td className="table-cell"><span className="badge bg-brand-blue/10 text-brand-blue">{roleLabels[u.role] || u.role}</span></td>
                 <td className="table-cell text-gray-500">{u.phone || "-"}</td>
                 <td className="table-cell"><span className={`badge ${u.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>{u.active ? "● Ativo" : "● Inativo"}</span></td>
                 <td className="table-cell text-xs text-gray-400">{u.lastLoginAt ? formatDate(u.lastLoginAt) : "Nunca"}</td>
                 <td className="table-cell">
-                  <div className="flex gap-2">
+                  <div className="flex gap-3 items-center">
                     <button onClick={() => toggleActive(u)} className={`text-xs font-semibold cursor-pointer ${u.active ? "text-red-500" : "text-emerald-600"}`}>{u.active ? "Desativar" : "Ativar"}</button>
                     <button onClick={() => { setEditingUser(u); setNewPassword(""); setPasswordMsg(""); }} className="text-xs font-semibold text-brand-orange cursor-pointer">🔑 Senha</button>
+                    {currentUserRole === "super_admin" && (
+                      <button onClick={() => handleDelete(u)} className="text-xs font-semibold text-red-700 hover:text-red-900 cursor-pointer">🗑️ Remover</button>
+                    )}
                   </div>
                 </td>
               </tr>

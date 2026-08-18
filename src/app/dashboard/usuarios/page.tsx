@@ -22,17 +22,28 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
   const [formData, setFormData] = useState({
-    name: "", email: "", password: "", role: "visualizador", phone: "",
+    name: "", email: "", password: "", role: "leader", phone: "", territory: "",
   });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (search) params.set("q", search);
+    
+    // Descobrir o papel do usuário atual via sessão ou endpoint rápido se necessário
+    const sessionRes = await fetch("/api/auth/session");
+    if (sessionRes.ok) {
+      const sessionData = await sessionRes.json();
+      if (sessionData?.user) {
+        setCurrentUserRole(sessionData.user.role);
+      }
+    }
+
     const res = await fetch(`/api/users?${params}`);
     const data = await res.json();
-    setUsers(data.users);
+    setUsers(data.users || []);
     setLoading(false);
   }, [search]);
 
@@ -47,21 +58,38 @@ export default function UsersPage() {
     });
     if (res.ok) {
       setShowForm(false);
-      setFormData({ name: "", email: "", password: "", role: "visualizador", phone: "" });
+      setFormData({ name: "", email: "", password: "", role: "leader", phone: "", territory: "" });
       loadData();
     } else {
       const data = await res.json();
-      alert(data.error || "Erro");
+      alert(data.error || "Erro ao criar usuário");
     }
   };
 
   const toggleActive = async (user: User) => {
-    await fetch(`/api/users/${user.id}`, {
+    const res = await fetch(`/api/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !user.active }),
     });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "Erro ao atualizar status");
+    }
     loadData();
+  };
+
+  const handleDelete = async (user: User) => {
+    if (!confirm(`Tem certeza que deseja remover permanentemente o usuário ${user.name}?`)) return;
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      loadData();
+    } else {
+      const data = await res.json();
+      alert(data.error || "Erro ao remover usuário");
+    }
   };
 
   const handleChangePassword = async () => {
@@ -73,14 +101,16 @@ export default function UsersPage() {
     const res = await fetch(`/api/users/${editingUser.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newPassword }),
+      body: JSON.stringify({ password: newPassword }),
     });
     if (res.ok) {
       setPasswordMsg("✅ Senha alterada com sucesso!");
       setNewPassword("");
       setTimeout(() => { setEditingUser(null); setPasswordMsg(""); }, 2000);
+      loadData();
     } else {
-      setPasswordMsg("❌ Erro ao alterar senha");
+      const data = await res.json();
+      setPasswordMsg(`❌ ${data.error || "Erro ao alterar senha"}`);
     }
   };
 
@@ -89,7 +119,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-brand-blue" style={{ fontFamily: "'Playfair Display', serif" }}>Usuários</h1>
-          <p className="text-sm text-gray-400">{users.length} registrados</p>
+          <p className="text-sm text-gray-400">{users.length} registrados na sua rede</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           {showForm ? "✕ Fechar" : "+ Novo Usuário"}
@@ -100,7 +130,7 @@ export default function UsersPage() {
         <div className="card">
           <h3 className="text-base font-bold text-brand-blue mb-4 flex items-center gap-2">
             <span className="w-1 h-5 rounded-full bg-brand-orange inline-block" />
-            Novo Usuário
+            Novo Usuário / Subordinado
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -121,9 +151,17 @@ export default function UsersPage() {
                 <input className="input-field" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
               </div>
               <div>
+                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Território</label>
+                <input className="input-field" value={formData.territory} onChange={(e) => setFormData({ ...formData, territory: e.target.value })} placeholder="Ex: Zona Norte / Bairro" />
+              </div>
+              <div>
                 <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Perfil *</label>
                 <select className="input-field" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}>
-                  {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {currentUserRole === "super_admin" && <option value="super_admin">Super Administrador</option>}
+                  <option value="coordinator">Coordenador</option>
+                  <option value="coordenador_regional">Coordenador Regional</option>
+                  <option value="leader">Liderança / Líder</option>
+                  <option value="lideranca">Liderança</option>
                 </select>
               </div>
             </div>
@@ -135,7 +173,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Password change modal */}
+      {/* Modal de Alteração de Senha */}
       {editingUser && (
         <div className="card border-2 border-brand-orange/30">
           <div className="flex items-center justify-between mb-4">
@@ -182,6 +220,7 @@ export default function UsersPage() {
                 <th className="table-header">E-mail</th>
                 <th className="table-header">Perfil</th>
                 <th className="table-header">Telefone</th>
+                <th className="table-header">Território</th>
                 <th className="table-header">Status</th>
                 <th className="table-header">Último Acesso</th>
                 <th className="table-header">Ações</th>
@@ -189,9 +228,9 @@ export default function UsersPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={7} className="table-cell text-center text-gray-300">Carregando...</td></tr>
+                <tr><td colSpan={8} className="table-cell text-center text-gray-300">Carregando...</td></tr>
               ) : users.length === 0 ? (
-                <tr><td colSpan={7} className="table-cell text-center text-gray-300">Nenhum usuário</td></tr>
+                <tr><td colSpan={8} className="table-cell text-center text-gray-300">Nenhum usuário encontrado</td></tr>
               ) : (
                 users.map((u) => (
                   <tr key={u.id} className="hover:bg-brand-cream/50 transition-colors">
@@ -201,6 +240,7 @@ export default function UsersPage() {
                       <span className="badge bg-brand-blue/10 text-brand-blue">{roleLabels[u.role] || u.role}</span>
                     </td>
                     <td className="table-cell text-gray-500">{u.phone || "-"}</td>
+                    <td className="table-cell text-gray-500">{u.territory || "-"}</td>
                     <td className="table-cell">
                       <span className={`badge ${u.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
                         {u.active ? "● Ativo" : "● Inativo"}
@@ -208,13 +248,19 @@ export default function UsersPage() {
                     </td>
                     <td className="table-cell text-xs text-gray-400">{u.lastLoginAt ? formatDate(u.lastLoginAt) : "Nunca"}</td>
                     <td className="table-cell">
-                      <div className="flex gap-2">
+                      <div className="flex gap-3 items-center">
                         <button onClick={() => toggleActive(u)} className={`text-xs font-semibold cursor-pointer ${u.active ? "text-red-500 hover:text-red-700" : "text-emerald-600 hover:text-emerald-800"}`}>
                           {u.active ? "Desativar" : "Ativar"}
                         </button>
                         <button onClick={() => { setEditingUser(u); setNewPassword(""); setPasswordMsg(""); }} className="text-xs font-semibold text-brand-orange hover:text-brand-orange-light cursor-pointer">
                           🔑 Senha
                         </button>
+                        {/* Botão de exclusão visível apenas para super_admin */}
+                        {currentUserRole === "super_admin" && (
+                          <button onClick={() => handleDelete(u)} className="text-xs font-semibold text-red-700 hover:text-red-900 cursor-pointer">
+                            🗑️ Remover
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
