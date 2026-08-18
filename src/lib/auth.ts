@@ -35,7 +35,6 @@ export async function createSession(user: SessionUser) {
   const payload = Buffer.from(JSON.stringify({ ...user, exp })).toString("base64url");
   const token = `${payload}.${sign(payload)}`;
   const store = await cookies();
-  // Em produção (HTTPS) usamos Secure; no dev deixamos sem Secure para funcionar no localhost http
   const isProd = process.env.NODE_ENV === "production";
   store.set(COOKIE, token, {
     httpOnly: true,
@@ -75,4 +74,9 @@ export async function getSession(): Promise<SessionUser | null> {
 export async function clearSession() {
   const store = await cookies();
   store.delete(COOKIE);
+}
+
+export function isAdmin(user: SessionUser | null): boolean {
+  if (!user) return false;
+  return user.role === "super_admin" || user.role === "coordinator";
 }

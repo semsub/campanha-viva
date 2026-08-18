@@ -27,6 +27,50 @@ export const campaigns = pgTable("campaigns", {
   active: boolean("active").default(true),
 });
 
+export const municipalities = pgTable("municipalities", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  state: text("state").notNull().default("PA"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const regions = pgTable("regions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const neighborhoods = pgTable("neighborhoods", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  regionId: integer("region_id").references(() => regions.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const electoralZones = pgTable("electoral_zones", {
+  id: serial("id").primaryKey(),
+  zoneNumber: text("zone_number").notNull(),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const electoralSections = pgTable("electoral_sections", {
+  id: serial("id").primaryKey(),
+  sectionNumber: text("section_number").notNull(),
+  zoneId: integer("zone_id").references(() => electoralZones.id),
+  locationName: text("location_name"),
+  address: text("address"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const demandCategories = pgTable("demand_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const users = pgTable(
   "users",
   {
