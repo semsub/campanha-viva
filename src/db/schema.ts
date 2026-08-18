@@ -9,7 +9,6 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-// Hierarquia atualizada com todos os papéis utilizados no seed
 export const userRoleEnum = pgEnum("user_role", [
   "super_admin",
   "coordinator",
@@ -104,6 +103,7 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     role: userRoleEnum("role").notNull().default("leader"),
     managerId: integer("manager_id"),
+    parentUserId: integer("parent_user_id"),
     campaignId: integer("campaign_id").references(() => campaigns.id),
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
