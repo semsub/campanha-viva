@@ -14,6 +14,7 @@ export const userRoleEnum = pgEnum("user_role", [
   "coordinator",
   "coordenador_regional",
   "leader",
+  "lideranca",
 ]);
 
 export const demandStatusEnum = pgEnum("demand_status", [
