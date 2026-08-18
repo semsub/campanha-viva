@@ -9,8 +9,14 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-// Hierarquia: super_admin → coordinator → leader
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "leader"]);
+// Hierarquia atualizada com todos os papéis utilizados no seed
+export const userRoleEnum = pgEnum("user_role", [
+  "super_admin",
+  "coordinator",
+  "coordenador_regional",
+  "leader",
+]);
+
 export const demandStatusEnum = pgEnum("demand_status", [
   "aberta",
   "em_andamento",
