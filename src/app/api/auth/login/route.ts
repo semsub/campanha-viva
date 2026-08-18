@@ -1,88 +1,59 @@
-import { NextResponse } from "next/server";
-import { db } from "@/db";
-import { users } from "@/db/schema";
+import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
+import { db } from "@/db";
+import { users, auditLogs } from "@/db/schema";
+import { verifyPassword, createSession } from "@/lib/auth";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback_secret_key_campanha_viva_2026"
-);
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { email, password } = body;
-
+    const { email, password } = (await req.json()) as { email?: string; password?: string };
     if (!email || !password) {
-      return NextResponse.json(
-        { error: "E-mail e senha são obrigatórios." },
-        { status: 400 }
-      );
+      return Response.json({ error: "Informe e-mail e senha." }, { status: 400 });
     }
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase().trim()));
+    const ip = req.headers.get("x-forwarded-for") ?? null;
 
-    if (!user || !user.active) {
-      return NextResponse.json(
-        { error: "Credenciais inválidas ou usuário inativo." },
-        { status: 401 }
-      );
+    if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
+      try {
+        if (user) {
+          await db.insert(auditLogs).values({
+            userId: user.id,
+            action: "login_failed",
+            entity: "users",
+            entityId: user.id,
+            ip,
+          });
+        }
+      } catch { /* não bloqueia o retorno */ }
+      return Response.json({ error: "Credenciais inválidas ou usuário inativo." }, { status: 401 });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordMatch) {
-      return NextResponse.json(
-        { error: "Credenciais inválidas." },
-        { status: 401 }
-      );
-    }
-
-    // Tipagem flexível para aceitar todos os papéis do banco de dados
-    const userRole: "super_admin" | "coordinator" | "coordenador_regional" | "leader" | "lideranca" = user.role as any;
-
-    const token = await new SignJWT({
-      userId: user.id,
+    await createSession({
+      id: user.id,
+      name: user.name,
       email: user.email,
-      role: userRole,
-      campaignId: user.campaignId,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("7d")
-      .sign(JWT_SECRET);
-
-    const response = NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: userRole,
-        territory: user.territory,
-      },
+      role: user.role,
+      territory: user.territory,
     });
 
-    response.cookies.set({
-      name: "auth_token",
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 dias
-      path: "/",
-    });
+    try {
+      await db.insert(auditLogs).values({
+        userId: user.id,
+        action: "login_success",
+        entity: "users",
+        entityId: user.id,
+        ip,
+      });
+    } catch { /* não bloqueia o login por causa de log */ }
 
-    return response;
-  } catch (error: any) {
-    console.error("Erro no login:", error);
-    return NextResponse.json(
-      { error: "Erro interno no servidor." },
-      { status: 500 }
-    );
+    return Response.json({ ok: true, role: user.role, name: user.name });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("login error:", msg);
+    return Response.json({ error: `Falha no servidor: ${msg}` }, { status: 500 });
   }
 }

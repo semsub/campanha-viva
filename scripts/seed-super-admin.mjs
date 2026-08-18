@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 
 const email = (process.env.SUPER_ADMIN_EMAIL ?? "admin@campanhaviva.com.br").toLowerCase();
-const password = process.env.SUPER_ADMIN_PASSWORD ?? "230808Deus#";
+const password = process.env.SUPER_ADMIN_PASSWORD ?? "Admin@2026";
 const name = process.env.SUPER_ADMIN_NAME ?? "Júnior Araújo";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

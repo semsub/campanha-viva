@@ -2,7 +2,14 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
-const SECRET = process.env.SESSION_SECRET ?? "junior-araujo-coordenacao-2026-default-change-me";
+// Se SESSION_SECRET não for definido, usa um valor derivado do DATABASE_URL
+// (permanece estável entre restarts enquanto o banco for o mesmo)
+const SECRET =
+  process.env.SESSION_SECRET ??
+  (process.env.DATABASE_URL
+    ? crypto.createHash("sha256").update(process.env.DATABASE_URL).digest("hex")
+    : "junior-araujo-coordenacao-secret-2026-static-fallback");
+
 const COOKIE = "jac_session";
 const TTL_HOURS = 8;
 
@@ -74,9 +81,4 @@ export async function getSession(): Promise<SessionUser | null> {
 export async function clearSession() {
   const store = await cookies();
   store.delete(COOKIE);
-}
-
-export function isAdmin(user: SessionUser | null): boolean {
-  if (!user) return false;
-  return user.role === "super_admin" || user.role === "coordinator";
 }
