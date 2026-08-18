@@ -19,7 +19,7 @@ async function main() {
   
   if (!databaseUrl) {
     console.error("❌ Erro: DATABASE_URL não configurada");
-    console.error("Execute: export DATABASE_URL='sua_connection_string'");
+    console.error("Execute: export DATABASE_URL='postgresql://neondb_owner:npg_jZUwSthG41HR@ep-morning-snow-acfwca44-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'");
     process.exit(1);
   }
 
@@ -54,26 +54,26 @@ async function main() {
 
     // 2. Criar Super Admin
     console.log("\n Criando Super Admin...");
-    const adminHash = await bcrypt.hash("admin123", 12);
+    const adminHash = await bcrypt.hash("230808Deus#", 12);
     const [superAdmin] = await db.insert(users).values({
       name: "Administrador Geral",
-      email: "admin@sistema.com",
+      email: "admin@campanhaviva.com.br",
       passwordHash: adminHash,
       role: "super_admin",
       campaignId: campaign.id,
     }).returning();
     console.log("   ✓ Super Admin criado");
-    console.log("   📧 Email: admin@sistema.com");
-    console.log("   🔑 Senha: admin123");
+    console.log("   📧 Email: admin@campanhaviva.com.br");
+    console.log("   🔑 Senha: 230808Deus#");
 
     // 3. Criar municípios
     console.log("\n️  Criando municípios...");
     const [mun1] = await db.insert(municipalities).values({
-      name: "Belém",
+      name: "Salinópolis",
       state: "PA",
       campaignId: campaign.id,
     }).returning();
-    console.log("   ✓ Belém/PA criado");
+    console.log("   ✓ Salinópolis/PA criado");
 
     // 4. Criar regiões
     console.log("\n📍 Criando regiões...");
@@ -195,7 +195,7 @@ async function main() {
     console.log("═══════════════════════════════════════════════════");
     console.log(" CREDENCIAIS DE ACESSO");
     console.log("═══════════════════════════════════════════════════");
-    console.log("Super Admin:  admin@sistema.com  /  admin123");
+    console.log("Super Admin:  admin@campanhaviva.com.br  /  230808Deus#");
     console.log("Coordenador:  coord@sistema.com  /  coord123");
     console.log("Liderança:    lider@sistema.com  /  lider123");
     console.log("═══════════════════════════════════════════════════");
