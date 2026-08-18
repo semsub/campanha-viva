@@ -9,6 +9,7 @@ interface User {
   email: string;
   role: string;
   phone: string | null;
+  territory: string | null;
   active: boolean | null;
   createdAt: string;
   lastLoginAt: string | null;
@@ -32,7 +33,6 @@ export default function UsersPage() {
     const params = new URLSearchParams();
     if (search) params.set("q", search);
     
-    // Descobrir o papel do usuário atual via sessão ou endpoint rápido se necessário
     const sessionRes = await fetch("/api/auth/session");
     if (sessionRes.ok) {
       const sessionData = await sessionRes.json();
@@ -173,7 +173,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Modal de Alteração de Senha */}
       {editingUser && (
         <div className="card border-2 border-brand-orange/30">
           <div className="flex items-center justify-between mb-4">
@@ -255,7 +254,6 @@ export default function UsersPage() {
                         <button onClick={() => { setEditingUser(u); setNewPassword(""); setPasswordMsg(""); }} className="text-xs font-semibold text-brand-orange hover:text-brand-orange-light cursor-pointer">
                           🔑 Senha
                         </button>
-                        {/* Botão de exclusão visível apenas para super_admin */}
                         {currentUserRole === "super_admin" && (
                           <button onClick={() => handleDelete(u)} className="text-xs font-semibold text-red-700 hover:text-red-900 cursor-pointer">
                             🗑️ Remover
