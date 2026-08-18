@@ -83,6 +83,7 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     role: userRoleEnum("role").notNull().default("leader"),
     managerId: integer("manager_id"),
+    campaignId: integer("campaign_id").references(() => campaigns.id),
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -110,7 +111,7 @@ export const demands = pgTable("demands", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
-  category: text("category").notNull(), // saúde, educação, infraestrutura, etc.
+  category: text("category").notNull(),
   status: demandStatusEnum("status").notNull().default("aberta"),
   priority: demandPriorityEnum("priority").notNull().default("media"),
   voterId: integer("voter_id").references(() => voters.id),
@@ -136,7 +137,7 @@ export const events = pgTable("events", {
   title: text("title").notNull(),
   description: text("description"),
   location: text("location"),
-  eventDate: text("event_date").notNull(), // ISO
+  eventDate: text("event_date").notNull(),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -152,4 +153,3 @@ export const auditLogs = pgTable("audit_logs", {
   ip: text("ip"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
