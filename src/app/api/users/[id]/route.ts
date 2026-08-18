@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-// Importação direta pela raiz da pasta src para evitar erro do Turbopack
-import { db } from "../../../../lib/db";
-import { users } from "../../../../lib/db/schema";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { getSession } from "../../../../lib/auth";
+import { getSession } from "@/lib/auth";
 
 export async function PATCH(
   req: NextRequest,
