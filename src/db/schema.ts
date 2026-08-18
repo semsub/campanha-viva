@@ -33,6 +33,7 @@ export const municipalities = pgTable("municipalities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   state: text("state").notNull().default("PA"),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
