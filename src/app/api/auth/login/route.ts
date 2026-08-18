@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback_secret_key_campanha_viva_2026"
-);
+import { verifyPassword, createSession } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -34,7 +29,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    const passwordMatch = verifyPassword(password, user.passwordHash);
     if (!passwordMatch) {
       return NextResponse.json(
         { error: "Credenciais inválidas." },
@@ -42,41 +37,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const userRole: any = user.role;
-
-    const token = await new SignJWT({
-      userId: user.id,
+    // Cria a sessão usando o padrão oficial do projeto (cookie jac_session)
+    await createSession({
+      id: user.id,
+      name: user.name,
       email: user.email,
-      role: userRole,
-      campaignId: user.campaignId,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("7d")
-      .sign(JWT_SECRET);
+      role: user.role as any,
+      territory: user.territory,
+    });
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: userRole,
+        role: user.role,
         territory: user.territory,
       },
     });
-
-    response.cookies.set({
-      name: "auth_token",
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 dias
-      path: "/",
-    });
-
-    return response;
   } catch (error: any) {
     console.error("Erro no login:", error);
     return NextResponse.json(
