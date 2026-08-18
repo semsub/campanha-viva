@@ -25,7 +25,8 @@ export default function LoginPage() {
         setError(data.error ?? "Falha ao entrar.");
         return;
       }
-      router.push("/");
+      // Usa navegação nativa para garantir que o cookie seja enviado no próximo request server-side
+      window.location.href = "/app";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro de rede.");
     } finally {

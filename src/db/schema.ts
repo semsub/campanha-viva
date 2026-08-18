@@ -9,12 +9,16 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-// Hierarquia: super_admin → coordinator → leader → eleitores
-export const userRoleEnum = pgEnum("user_role", [
-  "super_admin",
-  "coordinator",
-  "leader",
+// Hierarquia: super_admin → coordinator → leader
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "leader"]);
+export const demandStatusEnum = pgEnum("demand_status", [
+  "aberta",
+  "em_andamento",
+  "resolvida",
+  "cancelada",
 ]);
+export const demandPriorityEnum = pgEnum("demand_priority", ["baixa", "media", "alta", "urgente"]);
+export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento", "concluida"]);
 
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
@@ -27,16 +31,12 @@ export const users = pgTable(
   "users",
   {
     id: serial("id").primaryKey(),
-    campaignId: integer("campaign_id").references(() => campaigns.id),
     name: text("name").notNull(),
     email: text("email").notNull(),
     phone: text("phone"),
-    // bcrypt da senha — o Super Admin pode redefinir a de qualquer usuário
     passwordHash: text("password_hash").notNull(),
     role: userRoleEnum("role").notNull().default("leader"),
-    // vínculo hierárquico: quem criou/supervisiona este usuário
     managerId: integer("manager_id"),
-    // escopo territorial textual (região/bairro/município)
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -45,16 +45,64 @@ export const users = pgTable(
   (t) => [uniqueIndex("users_email_unique").on(t.email)],
 );
 
-// Trilha de auditoria — quem, quando, o quê, antes/depois, IP
+export const voters = pgTable("voters", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  cpf: text("cpf"),
+  address: text("address"),
+  neighborhood: text("neighborhood"),
+  city: text("city"),
+  birthDate: text("birth_date"),
+  notes: text("notes"),
+  leaderId: integer("leader_id").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const demands = pgTable("demands", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // saúde, educação, infraestrutura, etc.
+  status: demandStatusEnum("status").notNull().default("aberta"),
+  priority: demandPriorityEnum("priority").notNull().default("media"),
+  voterId: integer("voter_id").references(() => voters.id),
+  assignedTo: integer("assigned_to").references(() => users.id),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const tasks = pgTable("tasks", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: taskStatusEnum("status").notNull().default("pendente"),
+  dueDate: text("due_date"),
+  assignedTo: integer("assigned_to").references(() => users.id),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  location: text("location"),
+  eventDate: text("event_date").notNull(), // ISO
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
   actorId: integer("actor_id").references(() => users.id),
-  action: text("action").notNull(), // ex.: login, password_reset, user_create
+  action: text("action").notNull(),
   entity: text("entity"),
   entityId: integer("entity_id"),
-  oldValue: text("old_value"),
-  newValue: text("new_value"),
+  detail: text("detail"),
   ip: text("ip"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

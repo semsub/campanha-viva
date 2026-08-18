@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { pool } from "@/db";
 
 // GET /api/debug?token=SETUP_TOKEN — retorna status do banco
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const token = new URL(req.url).searchParams.get("token");
   const expected = process.env.SETUP_TOKEN;

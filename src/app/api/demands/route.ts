@@ -1,123 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, ilike, or, sql, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { demands, demandHistory, voters, demandCategories, users } from "@/db/schema";
-import { eq, and, desc, count, ilike, or, sql } from "drizzle-orm";
-import { getSession, canManageDemands } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
-import { generateProtocol } from "@/lib/utils";
+import { demands, voters, users, auditLogs } from "@/db/schema";
+import { getSession } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const { searchParams } = new URL(request.url);
-  const status = searchParams.get("status");
-  const categoryId = searchParams.get("categoryId");
-  const priority = searchParams.get("priority");
-  const search = searchParams.get("search");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = (page - 1) * limit;
-
-  const conditions = [];
-  if (session.campaignId) {
-    conditions.push(eq(demands.campaignId, session.campaignId));
-  }
-  if (status) {
-    conditions.push(sql`${demands.status} = ${status}`);
-  }
-  if (categoryId) {
-    conditions.push(eq(demands.categoryId, parseInt(categoryId)));
-  }
-  if (priority) {
-    conditions.push(sql`${demands.priority} = ${priority}`);
-  }
-  if (search) {
-    conditions.push(or(ilike(demands.protocol, `%${search}%`), ilike(demands.description, `%${search}%`)));
-  }
-
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-  const result = await db
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function GET(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const url = new URL(req.url);
+  const q = url.searchParams.get("q")?.trim();
+  const category = url.searchParams.get("category");
+  const status = url.searchParams.get("status");
+  const base = db
     .select({
-      id: demands.id,
-      protocol: demands.protocol,
-      description: demands.description,
-      priority: demands.priority,
-      status: demands.status,
-      categoryId: demands.categoryId,
-      subcategoryId: demands.subcategoryId,
-      voterId: demands.voterId,
-      openedAt: demands.openedAt,
-      deadline: demands.deadline,
-      closedAt: demands.closedAt,
-      observations: demands.observations,
-      result: demands.result,
-      createdAt: demands.createdAt,
+      id: demands.id, title: demands.title, description: demands.description,
+      category: demands.category, status: demands.status, priority: demands.priority,
+      voterId: demands.voterId, voterName: voters.name,
+      assignedTo: demands.assignedTo, assignedName: users.name,
+      createdAt: demands.createdAt, updatedAt: demands.updatedAt,
     })
     .from(demands)
-    .where(whereClause)
-    .orderBy(desc(demands.createdAt))
-    .limit(limit)
-    .offset(offset);
+    .leftJoin(voters, eq(demands.voterId, voters.id))
+    .leftJoin(users, eq(demands.assignedTo, users.id));
 
-  const [totalResult] = await db.select({ total: count() }).from(demands).where(whereClause);
+  const conds = [] as unknown[];
+  if (q) conds.push(or(ilike(demands.title, `%${q}%`), ilike(demands.description, `%${q}%`)));
+  if (category) conds.push(eq(demands.category, category));
+  if (status) conds.push(eq(demands.status, status as "aberta"|"em_andamento"|"resolvida"|"cancelada"));
 
-  return NextResponse.json({
-    demands: result,
-    total: totalResult.total,
-    page,
-    totalPages: Math.ceil(totalResult.total / limit),
-  });
+  const rows = await (conds.length
+    ? base.where(sql.join(conds as never[], sql` AND `))
+    : base.where(sql`TRUE`)
+  ).orderBy(desc(demands.createdAt)).limit(500);
+  return NextResponse.json({ demands: rows });
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  if (!canManageDemands(session.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
-
-  const body = await request.json();
-  const { categoryId, subcategoryId, description, priority, voterId, deadline, observations } = body;
-
-  if (!description || !categoryId) {
-    return NextResponse.json({ error: "Descrição e categoria são obrigatórios" }, { status: 400 });
-  }
-
-  const protocol = generateProtocol();
-
-  const [newDemand] = await db.insert(demands).values({
-    protocol,
-    categoryId: parseInt(categoryId),
-    subcategoryId: subcategoryId ? parseInt(subcategoryId) : null,
-    description,
-    priority: priority || "media",
-    status: "aberta",
-    voterId: voterId ? parseInt(voterId) : null,
-    coordinatorId: session.id,
-    campaignId: session.campaignId,
-    deadline: deadline ? new Date(deadline) : null,
-    observations: observations || null,
-    createdBy: session.id,
-  }).returning();
-
-  // Create history entry
-  await db.insert(demandHistory).values({
-    demandId: newDemand.id,
-    userId: session.id,
-    action: "criação",
-    description: "Demanda criada",
-    newStatus: "aberta",
+export async function POST(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const b = (await req.json()) as {
+    title?: string; description?: string; category?: string;
+    priority?: "baixa"|"media"|"alta"|"urgente";
+    voterId?: number; assignedTo?: number;
+  };
+  if (!b.title || !b.category) return NextResponse.json({ error: "título e categoria são obrigatórios" }, { status: 400 });
+  const [row] = await db.insert(demands).values({
+    title: b.title.trim(),
+    description: b.description ?? null,
+    category: b.category,
+    priority: b.priority ?? "media",
+    voterId: b.voterId ?? null,
+    assignedTo: b.assignedTo ?? null,
+    createdBy: s.id,
+  }).returning({ id: demands.id });
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "demand_create", entity: "demands", entityId: row.id,
+    detail: `Criou demanda: ${b.title}`, ip: req.headers.get("x-forwarded-for"),
   });
-
-  await logAudit({
-    userId: session.id,
-    action: "create",
-    entity: "demands",
-    entityId: newDemand.id,
-    newValue: { protocol, categoryId, description },
-  });
-
-  return NextResponse.json({ demand: newDemand }, { status: 201 });
+  return NextResponse.json({ ok: true, id: row.id });
 }

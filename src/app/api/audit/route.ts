@@ -1,44 +1,28 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLogs, users } from "@/db/schema";
-import { eq, desc, and, ilike, or } from "drizzle-orm";
-import { getSession, canViewAudit } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  if (!canViewAudit(session.role)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
-  const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = (page - 1) * limit;
-  const entity = searchParams.get("entity");
-  const action = searchParams.get("action");
-
-  const conditions = [];
-  if (entity) conditions.push(eq(auditLogs.entity, entity));
-  if (action) conditions.push(eq(auditLogs.action, action));
-
-  const result = await db
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function GET() {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  if (s.role !== "super_admin") return NextResponse.json({ error: "sem permissão" }, { status: 403 });
+  const rows = await db
     .select({
-      id: auditLogs.id,
-      userId: auditLogs.userId,
-      userName: users.name,
-      action: auditLogs.action,
-      entity: auditLogs.entity,
-      entityId: auditLogs.entityId,
-      previousValue: auditLogs.previousValue,
-      newValue: auditLogs.newValue,
-      ipAddress: auditLogs.ipAddress,
+      id: auditLogs.id, action: auditLogs.action,
+      entity: auditLogs.entity, entityId: auditLogs.entityId,
+      detail: auditLogs.detail, ip: auditLogs.ip,
       createdAt: auditLogs.createdAt,
+      actorId: auditLogs.actorId, actorName: users.name, actorEmail: users.email,
     })
     .from(auditLogs)
-    .leftJoin(users, eq(auditLogs.userId, users.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .leftJoin(users, eq(auditLogs.actorId, users.id))
+    .where(sql`TRUE`)
     .orderBy(desc(auditLogs.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  return NextResponse.json({ logs: result });
+    .limit(300);
+  return NextResponse.json({ logs: rows });
 }

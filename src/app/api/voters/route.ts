@@ -1,122 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, ilike, or, sql, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { voters, leaderships, neighborhoods, municipalities } from "@/db/schema";
-import { eq, and, ilike, or, sql, desc, count } from "drizzle-orm";
-import { getSession, canManageVoters, isAdmin, isCoordinator } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
+import { voters, users, auditLogs } from "@/db/schema";
+import { getSession } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search");
-  const neighborhoodId = searchParams.get("neighborhoodId");
-  const leadershipId = searchParams.get("leadershipId");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = (page - 1) * limit;
-
-  const conditions = [];
-  if (session.campaignId) {
-    conditions.push(eq(voters.campaignId, session.campaignId));
-  }
-  if (search) {
-    conditions.push(or(ilike(voters.fullName, `%${search}%`), ilike(voters.phone || "", `%${search}%`)));
-  }
-  if (neighborhoodId) {
-    conditions.push(eq(voters.neighborhoodId, parseInt(neighborhoodId)));
-  }
-  if (leadershipId) {
-    conditions.push(eq(voters.leadershipId, parseInt(leadershipId)));
-  }
-
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-  const result = await db
-    .select()
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function GET(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const q = new URL(req.url).searchParams.get("q")?.trim();
+  const base = db
+    .select({
+      id: voters.id, name: voters.name, phone: voters.phone, cpf: voters.cpf,
+      address: voters.address, neighborhood: voters.neighborhood, city: voters.city,
+      birthDate: voters.birthDate, notes: voters.notes,
+      leaderId: voters.leaderId, leaderName: users.name,
+      createdAt: voters.createdAt,
+    })
     .from(voters)
-    .where(whereClause)
-    .orderBy(desc(voters.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  const [totalResult] = await db
-    .select({ total: count() })
-    .from(voters)
-    .where(whereClause);
-
-  return NextResponse.json({
-    voters: result,
-    total: totalResult.total,
-    page,
-    totalPages: Math.ceil(totalResult.total / limit),
-  });
+    .leftJoin(users, eq(voters.leaderId, users.id));
+  const rows = await (q
+    ? base.where(
+        or(
+          ilike(voters.name, `%${q}%`),
+          ilike(voters.phone, `%${q}%`),
+          ilike(voters.cpf, `%${q}%`),
+          ilike(voters.neighborhood, `%${q}%`),
+        ),
+      )
+    : base.where(sql`TRUE`)
+  ).orderBy(desc(voters.createdAt)).limit(500);
+  return NextResponse.json({ voters: rows });
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  if (!canManageVoters(session.role)) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-  }
-
-  const body = await request.json();
-  const { fullName, socialName, birthDate, cpf, phone, email, address, addressNumber, complement, cep, referencePoint, municipalityId, neighborhoodId, regionId, community, electoralZoneId, electoralSectionId, leadershipId, firstContactDate, contactForm, consentGiven } = body;
-
-  if (!fullName) {
-    return NextResponse.json({ error: "Nome completo obrigatório" }, { status: 400 });
-  }
-
-  // Check for potential duplicates
-  if (phone || cpf) {
-    const dupConditions = [];
-    if (phone) dupConditions.push(eq(voters.phone, phone));
-    if (cpf) dupConditions.push(eq(voters.cpf, cpf));
-    const duplicates = await db.select({ id: voters.id, fullName: voters.fullName }).from(voters).where(or(...dupConditions)).limit(5);
-    if (duplicates.length > 0) {
-      // Return warning but still allow creation
-      // In production, this should be a separate check endpoint
-    }
-  }
-
-  const [newVoter] = await db.insert(voters).values({
-    fullName,
-    socialName: socialName || null,
-    birthDate: birthDate || null,
-    cpf: cpf || null,
-    phone: phone || null,
-    email: email || null,
-    address: address || null,
-    addressNumber: addressNumber || null,
-    complement: complement || null,
-    cep: cep || null,
-    referencePoint: referencePoint || null,
-    municipalityId: municipalityId ? parseInt(municipalityId) : null,
-    neighborhoodId: neighborhoodId ? parseInt(neighborhoodId) : null,
-    regionId: regionId ? parseInt(regionId) : null,
-    community: community || null,
-    electoralZoneId: electoralZoneId ? parseInt(electoralZoneId) : null,
-    electoralSectionId: electoralSectionId ? parseInt(electoralSectionId) : null,
-    leadershipId: leadershipId ? parseInt(leadershipId) : null,
-    coordinatorId: isCoordinator(session.role) ? session.id : null,
-    campaignId: session.campaignId,
-    firstContactDate: firstContactDate || new Date().toISOString().split("T")[0],
-    lastContactDate: new Date().toISOString().split("T")[0],
-    contactForm: contactForm || null,
-    consentGiven: consentGiven || false,
-    consentDate: consentGiven ? new Date() : null,
-    createdBy: session.id,
-    registrationStatus: "ativo",
-  }).returning();
-
-  await logAudit({
-    userId: session.id,
-    action: "create",
-    entity: "voters",
-    entityId: newVoter.id,
-    newValue: { fullName },
+export async function POST(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const b = (await req.json()) as {
+    name?: string; phone?: string; cpf?: string; address?: string;
+    neighborhood?: string; city?: string; birthDate?: string; notes?: string;
+    leaderId?: number;
+  };
+  if (!b.name) return NextResponse.json({ error: "nome é obrigatório" }, { status: 400 });
+  const [row] = await db.insert(voters).values({
+    name: b.name.trim(),
+    phone: b.phone ?? null, cpf: b.cpf ?? null,
+    address: b.address ?? null, neighborhood: b.neighborhood ?? null,
+    city: b.city ?? null, birthDate: b.birthDate ?? null, notes: b.notes ?? null,
+    leaderId: b.leaderId ?? (s.role === "leader" ? s.id : null),
+  }).returning({ id: voters.id });
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "voter_create", entity: "voters", entityId: row.id,
+    detail: `Cadastrou eleitor ${b.name}`, ip: req.headers.get("x-forwarded-for"),
   });
-
-  return NextResponse.json({ voter: newVoter }, { status: 201 });
+  return NextResponse.json({ ok: true, id: row.id });
 }

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 
-const SECRET = process.env.SESSION_SECRET ?? "junior-araujo-coordenacao-2026";
+const SECRET = process.env.SESSION_SECRET ?? "junior-araujo-coordenacao-2026-default-change-me";
 const COOKIE = "jac_session";
 const TTL_HOURS = 8;
 
@@ -23,7 +23,11 @@ export function hashPassword(plain: string): string {
 }
 
 export function verifyPassword(plain: string, hash: string): boolean {
-  return bcrypt.compareSync(plain, hash);
+  try {
+    return bcrypt.compareSync(plain, hash);
+  } catch {
+    return false;
+  }
 }
 
 export async function createSession(user: SessionUser) {
@@ -31,27 +35,38 @@ export async function createSession(user: SessionUser) {
   const payload = Buffer.from(JSON.stringify({ ...user, exp })).toString("base64url");
   const token = `${payload}.${sign(payload)}`;
   const store = await cookies();
+  // Em produção (HTTPS) usamos Secure; no dev deixamos sem Secure para funcionar no localhost http
+  const isProd = process.env.NODE_ENV === "production";
   store.set(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     maxAge: TTL_HOURS * 3600,
     path: "/",
   });
 }
 
 export async function getSession(): Promise<SessionUser | null> {
-  const store = await cookies();
-  const token = store.get(COOKIE)?.value;
-  if (!token) return null;
-  const [payload, sig] = token.split(".");
-  if (!payload || !sig || sign(payload) !== sig) return null;
   try {
+    const store = await cookies();
+    const token = store.get(COOKIE)?.value;
+    if (!token) return null;
+    const idx = token.lastIndexOf(".");
+    if (idx < 0) return null;
+    const payload = token.slice(0, idx);
+    const sig = token.slice(idx + 1);
+    if (!payload || !sig || sign(payload) !== sig) return null;
     const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as SessionUser & {
       exp: number;
     };
     if (data.exp < Date.now()) return null;
-    return { id: data.id, name: data.name, email: data.email, role: data.role, territory: data.territory };
+    return {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      territory: data.territory,
+    };
   } catch {
     return null;
   }

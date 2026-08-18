@@ -1,48 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { events } from "@/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { events, auditLogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const conditions = [];
-  if (session.campaignId) conditions.push(eq(events.campaignId, session.campaignId));
-
-  const result = await db.select().from(events)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(events.eventDate));
-
-  return NextResponse.json({ events: result });
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function GET() {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const rows = await db.select().from(events).where(sql`TRUE`).orderBy(desc(events.eventDate)).limit(500);
+  return NextResponse.json({ events: rows });
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-
-  const body = await request.json();
-  const { title, type, description, eventDate, endDate, location, regionId, observations } = body;
-
-  if (!title) return NextResponse.json({ error: "Título obrigatório" }, { status: 400 });
-
-  const [event] = await db.insert(events).values({
-    title,
-    type: type || null,
-    description: description || null,
-    eventDate: eventDate ? new Date(eventDate) : null,
-    endDate: endDate ? new Date(endDate) : null,
-    location: location || null,
-    responsibleId: session.id,
-    campaignId: session.campaignId,
-    regionId: regionId ? parseInt(regionId) : null,
-    observations: observations || null,
-    createdBy: session.id,
-  }).returning();
-
-  await logAudit({ userId: session.id, action: "create", entity: "events", entityId: event.id, newValue: { title } });
-
-  return NextResponse.json({ event }, { status: 201 });
+export async function POST(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const b = (await req.json()) as {
+    title?: string; description?: string; location?: string; eventDate?: string;
+  };
+  if (!b.title || !b.eventDate) {
+    return NextResponse.json({ error: "título e data são obrigatórios" }, { status: 400 });
+  }
+  const [row] = await db.insert(events).values({
+    title: b.title.trim(),
+    description: b.description ?? null,
+    location: b.location ?? null,
+    eventDate: b.eventDate,
+    createdBy: s.id,
+  }).returning({ id: events.id });
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "event_create", entity: "events", entityId: row.id,
+    detail: `Novo evento: ${b.title}`, ip: req.headers.get("x-forwarded-for"),
+  });
+  return NextResponse.json({ ok: true, id: row.id });
 }

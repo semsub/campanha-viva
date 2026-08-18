@@ -1,74 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getSession, isAdmin, hashPassword } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
+import { db } from "@/db";
+import { users, auditLogs } from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { canManageUsers } from "@/lib/permissions";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const { id } = await params;
-  const userId = parseInt(id);
-
-  const [user] = await db.select({
-    id: users.id,
-    name: users.name,
-    email: users.email,
-    role: users.role,
-    phone: users.phone,
-    active: users.active,
-    campaignId: users.campaignId,
-    parentUserId: users.parentUserId,
-    createdAt: users.createdAt,
-    lastLoginAt: users.lastLoginAt,
-  }).from(users).where(eq(users.id, userId)).limit(1);
-
-  if (!user) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
-
-  return NextResponse.json({ user });
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  if (!canManageUsers(s.role)) return NextResponse.json({ error: "sem permissão" }, { status: 403 });
+  const { id } = await ctx.params;
+  const uid = Number(id);
+  const b = (await req.json()) as {
+    name?: string; phone?: string; territory?: string;
+    role?: "super_admin" | "coordinator" | "leader";
+    active?: boolean;
+  };
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (b.name !== undefined) patch.name = b.name;
+  if (b.phone !== undefined) patch.phone = b.phone;
+  if (b.territory !== undefined) patch.territory = b.territory;
+  if (b.active !== undefined) patch.active = b.active;
+  if (b.role !== undefined) {
+    if (b.role === "super_admin" && s.role !== "super_admin") {
+      return NextResponse.json({ error: "sem permissão para promover a super_admin" }, { status: 403 });
+    }
+    patch.role = b.role;
+  }
+  await db.update(users).set(patch).where(eq(users.id, uid));
+  await db.insert(auditLogs).values({
+    actorId: s.id, userId: uid, action: "user_update", entity: "users", entityId: uid,
+    detail: JSON.stringify(patch), ip: req.headers.get("x-forwarded-for"),
+  });
+  return NextResponse.json({ ok: true });
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-
-  const { id } = await params;
-  const userId = parseInt(id);
-  const body = await request.json();
-
-  const [existing] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!existing) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
-
-  // Permission: admin can edit anyone, others can only edit subordinates
-  if (!isAdmin(session.role) && existing.parentUserId !== session.id) {
-    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const s = await getSession();
+  if (!s || s.role !== "super_admin") {
+    return NextResponse.json({ error: "somente super_admin pode excluir" }, { status: 403 });
   }
-
-  const updateData: Record<string, unknown> = { updatedAt: new Date() };
-  if (body.name !== undefined) updateData.name = body.name;
-  if (body.email !== undefined) updateData.email = body.email;
-  if (body.phone !== undefined) updateData.phone = body.phone;
-  if (body.active !== undefined) updateData.active = body.active;
-  if (body.role !== undefined && isAdmin(session.role)) updateData.role = body.role;
-
-  // Super Admin can change password of any user
-  if (body.newPassword && isAdmin(session.role)) {
-    const newHash = await hashPassword(body.newPassword);
-    updateData.passwordHash = newHash;
+  const { id } = await ctx.params;
+  const uid = Number(id);
+  if (uid === s.id) {
+    return NextResponse.json({ error: "não pode excluir a si mesmo" }, { status: 400 });
   }
-
-  await db.update(users).set(updateData).where(eq(users.id, userId));
-
-  await logAudit({
-    userId: session.id,
-    action: "update",
-    entity: "users",
-    entityId: userId,
-    previousValue: { name: existing.name, active: existing.active, role: existing.role },
-    newValue: { ...updateData, passwordHash: body.newPassword ? "[ALTERADA]" : undefined },
+  await db.delete(users).where(eq(users.id, uid));
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "user_delete", entity: "users", entityId: uid,
+    ip: req.headers.get("x-forwarded-for"),
   });
-
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ ok: true });
 }

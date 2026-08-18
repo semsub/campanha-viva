@@ -5,10 +5,10 @@ import { users, auditLogs } from "@/db/schema";
 import { getSession, hashPassword } from "@/lib/auth";
 
 // SUPER ADMIN pode alterar a senha de QUALQUER usuário
-export async function PATCH(
-  req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
-) {
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "super_admin") {
     return NextResponse.json({ error: "Acesso restrito ao Super Admin." }, { status: 403 });
@@ -44,8 +44,7 @@ export async function PATCH(
     action: "password_reset_by_super_admin",
     entity: "users",
     entityId: target.id,
-    oldValue: "***",
-    newValue: "***",
+    detail: `Super Admin ${session.email} redefiniu senha de ${target.email}`,
     ip: req.headers.get("x-forwarded-for"),
   });
 

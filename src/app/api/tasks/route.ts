@@ -1,52 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { tasks } from "@/db/schema";
-import { eq, and, desc, count, sql } from "drizzle-orm";
+import { tasks, users, auditLogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const { searchParams } = new URL(request.url);
-  const status = searchParams.get("status");
-
-  const conditions = [];
-  if (session.campaignId) conditions.push(eq(tasks.campaignId, session.campaignId));
-  if (status) conditions.push(sql`${tasks.status} = ${status}`);
-
-  const result = await db.select().from(tasks)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(tasks.createdAt));
-
-  return NextResponse.json({ tasks: result });
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function GET() {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const rows = await db
+    .select({
+      id: tasks.id, title: tasks.title, description: tasks.description,
+      status: tasks.status, dueDate: tasks.dueDate,
+      assignedTo: tasks.assignedTo, assignedName: users.name,
+      createdAt: tasks.createdAt,
+    })
+    .from(tasks)
+    .leftJoin(users, eq(tasks.assignedTo, users.id))
+    .where(sql`TRUE`)
+    .orderBy(desc(tasks.createdAt))
+    .limit(500);
+  return NextResponse.json({ tasks: rows });
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-
-  const body = await request.json();
-  const { title, description, assignedToId, deadline, priority, demandId, voterId, regionId } = body;
-
-  if (!title) return NextResponse.json({ error: "Título obrigatório" }, { status: 400 });
-
-  const [task] = await db.insert(tasks).values({
-    title,
-    description: description || null,
-    assignedToId: assignedToId ? parseInt(assignedToId) : null,
-    createdById: session.id,
-    deadline: deadline ? new Date(deadline) : null,
-    priority: priority || "media",
-    status: "pendente",
-    demandId: demandId ? parseInt(demandId) : null,
-    voterId: voterId ? parseInt(voterId) : null,
-    regionId: regionId ? parseInt(regionId) : null,
-    campaignId: session.campaignId,
-  }).returning();
-
-  await logAudit({ userId: session.id, action: "create", entity: "tasks", entityId: task.id, newValue: { title } });
-
-  return NextResponse.json({ task }, { status: 201 });
+export async function POST(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const b = (await req.json()) as {
+    title?: string; description?: string; dueDate?: string; assignedTo?: number;
+  };
+  if (!b.title) return NextResponse.json({ error: "título obrigatório" }, { status: 400 });
+  const [row] = await db.insert(tasks).values({
+    title: b.title.trim(),
+    description: b.description ?? null,
+    dueDate: b.dueDate ?? null,
+    assignedTo: b.assignedTo ?? null,
+    createdBy: s.id,
+  }).returning({ id: tasks.id });
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "task_create", entity: "tasks", entityId: row.id,
+    detail: `Nova tarefa: ${b.title}`, ip: req.headers.get("x-forwarded-for"),
+  });
+  return NextResponse.json({ ok: true, id: row.id });
 }

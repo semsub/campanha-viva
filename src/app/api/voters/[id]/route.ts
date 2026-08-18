@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { demands, auditLogs } from "@/db/schema";
+import { voters, auditLogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 
 
@@ -11,16 +11,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
   const { id } = await ctx.params;
-  const did = Number(id);
+  const vid = Number(id);
   const b = (await req.json()) as Record<string, unknown>;
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const k of ["title","description","category","status","priority","voterId","assignedTo"] as const) {
+  for (const k of ["name","phone","cpf","address","neighborhood","city","birthDate","notes","leaderId"] as const) {
     if (b[k] !== undefined) patch[k] = b[k];
   }
-  await db.update(demands).set(patch).where(eq(demands.id, did));
+  await db.update(voters).set(patch).where(eq(voters.id, vid));
   await db.insert(auditLogs).values({
-    actorId: s.id, action: "demand_update", entity: "demands", entityId: did,
-    detail: JSON.stringify(patch), ip: req.headers.get("x-forwarded-for"),
+    actorId: s.id, action: "voter_update", entity: "voters", entityId: vid,
+    ip: req.headers.get("x-forwarded-for"),
   });
   return NextResponse.json({ ok: true });
 }
@@ -30,10 +30,10 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
   if (s.role === "leader") return NextResponse.json({ error: "sem permissão" }, { status: 403 });
   const { id } = await ctx.params;
-  const did = Number(id);
-  await db.delete(demands).where(eq(demands.id, did));
+  const vid = Number(id);
+  await db.delete(voters).where(eq(voters.id, vid));
   await db.insert(auditLogs).values({
-    actorId: s.id, action: "demand_delete", entity: "demands", entityId: did,
+    actorId: s.id, action: "voter_delete", entity: "voters", entityId: vid,
     ip: req.headers.get("x-forwarded-for"),
   });
   return NextResponse.json({ ok: true });

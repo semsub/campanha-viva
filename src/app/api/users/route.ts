@@ -1,101 +1,84 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq, and, sql, ilike, or } from "drizzle-orm";
-import { getSession, hashPassword, isAdmin, canManageCoordinators } from "@/lib/auth";
-import { logAudit } from "@/lib/audit";
+import { users, auditLogs } from "@/db/schema";
+import { getSession, hashPassword } from "@/lib/auth";
+import { canManageUsers } from "@/lib/permissions";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const { searchParams } = new URL(request.url);
-  const role = searchParams.get("role");
-  const search = searchParams.get("search");
-  const parentId = searchParams.get("parentId");
-
-  const conditions = [];
-  if (session.campaignId) {
-    conditions.push(eq(users.campaignId, session.campaignId));
-  }
-  if (role) {
-    conditions.push(sql`${users.role} = ${role}`);
-  }
-  if (parentId) {
-    conditions.push(eq(users.parentUserId, parseInt(parentId)));
-  }
-  if (search) {
-    conditions.push(or(ilike(users.name, `%${search}%`), ilike(users.email, `%${search}%`)));
-  }
-
-  // Non-admins can only see their subordinates
-  if (!isAdmin(session.role)) {
-    conditions.push(eq(users.parentUserId, session.id));
-  }
-
-  const result = await db
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export async function GET(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const q = new URL(req.url).searchParams.get("q")?.trim();
+  const rows = await db
     .select({
       id: users.id,
       name: users.name,
       email: users.email,
-      role: users.role,
       phone: users.phone,
+      role: users.role,
+      territory: users.territory,
       active: users.active,
-      campaignId: users.campaignId,
-      parentUserId: users.parentUserId,
       createdAt: users.createdAt,
-      lastLoginAt: users.lastLoginAt,
     })
     .from(users)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(users.name);
-
-  return NextResponse.json({ users: result });
+    .where(q ? or(ilike(users.name, `%${q}%`), ilike(users.email, `%${q}%`)) : sql`TRUE`)
+    .orderBy(desc(users.createdAt));
+  return NextResponse.json({ users: rows });
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-
-  const body = await request.json();
-  const { name, email, password, role, phone } = body;
-
-  if (!name || !email || !password || !role) {
-    return NextResponse.json({ error: "Campos obrigatórios: nome, email, senha, perfil" }, { status: 400 });
+export async function POST(req: NextRequest) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  if (!canManageUsers(s.role)) {
+    return NextResponse.json({ error: "sem permissão" }, { status: 403 });
   }
-
-  // Permission check
-  const coordinatorRoles = ["coordenador_geral", "coordenador_regional", "coordenador_municipal"];
-  if (coordinatorRoles.includes(role) && !canManageCoordinators(session.role)) {
-    return NextResponse.json({ error: "Sem permissão para criar coordenadores" }, { status: 403 });
+  const b = (await req.json()) as {
+    name?: string; email?: string; phone?: string;
+    password?: string; role?: "super_admin" | "coordinator" | "leader";
+    territory?: string;
+  };
+  if (!b.name || !b.email || !b.password) {
+    return NextResponse.json({ error: "nome, email e senha são obrigatórios" }, { status: 400 });
   }
-
-  // Check duplicate email
-  const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (existing) {
-    return NextResponse.json({ error: "Email já cadastrado" }, { status: 400 });
+  if (b.password.length < 6) {
+    return NextResponse.json({ error: "a senha deve ter ao menos 6 caracteres" }, { status: 400 });
   }
-
-  const passwordHash = await hashPassword(password);
-
-  const [newUser] = await db.insert(users).values({
-    name,
-    email,
-    passwordHash,
-    role,
-    phone: phone || null,
-    campaignId: session.campaignId,
-    parentUserId: session.id,
-    active: true,
-  }).returning();
-
-  await logAudit({
-    userId: session.id,
-    action: "create",
-    entity: "users",
-    entityId: newUser.id,
-    newValue: { name, email, role },
-  });
-
-  return NextResponse.json({ user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role } }, { status: 201 });
+  // Somente super_admin pode criar outro super_admin
+  const role = b.role ?? "leader";
+  if (role === "super_admin" && s.role !== "super_admin") {
+    return NextResponse.json({ error: "somente super_admin pode criar outro super_admin" }, { status: 403 });
+  }
+  try {
+    const [row] = await db
+      .insert(users)
+      .values({
+        name: b.name.trim(),
+        email: b.email.toLowerCase().trim(),
+        phone: b.phone ?? null,
+        passwordHash: hashPassword(b.password),
+        role,
+        territory: b.territory ?? null,
+        managerId: s.id,
+      })
+      .returning({ id: users.id });
+    await db.insert(auditLogs).values({
+      actorId: s.id,
+      userId: row.id,
+      action: "user_create",
+      entity: "users",
+      entityId: row.id,
+      detail: `Criou usuário ${b.email} (${role})`,
+      ip: req.headers.get("x-forwarded-for"),
+    });
+    return NextResponse.json({ ok: true, id: row.id });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("users_email_unique")) {
+      return NextResponse.json({ error: "email já cadastrado" }, { status: 409 });
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
