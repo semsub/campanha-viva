@@ -41,6 +41,7 @@ export const regions = pgTable("regions", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   municipalityId: integer("municipality_id").references(() => municipalities.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
