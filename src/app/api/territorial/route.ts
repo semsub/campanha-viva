@@ -1,50 +1,51 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { municipalities, regions, neighborhoods, electoralZones, electoralSections } from "@/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
 
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type");
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type");
 
-  const conditions = [];
-  if (session.campaignId) {
-    if (type === "municipalities") {
-      conditions.push(eq(municipalities.campaignId, session.campaignId));
-      const result = await db.select().from(municipalities).where(and(...conditions)).orderBy(asc(municipalities.name));
-      return NextResponse.json({ data: result });
+    const conditions = [];
+    
+    // Tratamento seguro para campaignId
+    const sessionCampaignId = (session as any).campaignId;
+    if (sessionCampaignId) {
+      if (type === "municipalities") {
+        conditions.push(eq(municipalities.campaignId, sessionCampaignId));
+        const result = await db.select().from(municipalities).where(conditions.length > 0 ? and(...conditions) : undefined);
+        return NextResponse.json(result);
+      } else if (type === "regions") {
+        conditions.push(eq(regions.campaignId, sessionCampaignId));
+        const result = await db.select().from(regions).where(conditions.length > 0 ? and(...conditions) : undefined);
+        return NextResponse.json(result);
+      } else if (type === "neighborhoods") {
+        conditions.push(eq(neighborhoods.campaignId, sessionCampaignId));
+        const result = await db.select().from(neighborhoods).where(conditions.length > 0 ? and(...conditions) : undefined);
+        return NextResponse.json(result);
+      } else if (type === "zones") {
+        conditions.push(eq(electoralZones.campaignId, sessionCampaignId));
+        const result = await db.select().from(electoralZones).where(conditions.length > 0 ? and(...conditions) : undefined);
+        return NextResponse.json(result);
+      } else if (type === "sections") {
+        conditions.push(eq(electoralSections.campaignId, sessionCampaignId));
+        const result = await db.select().from(electoralSections).where(conditions.length > 0 ? and(...conditions) : undefined);
+        return NextResponse.json(result);
+      }
     }
-    if (type === "regions") {
-      const munId = searchParams.get("municipalityId");
-      conditions.push(eq(regions.campaignId, session.campaignId));
-      if (munId) conditions.push(eq(regions.municipalityId, parseInt(munId)));
-      const result = await db.select().from(regions).where(and(...conditions)).orderBy(asc(regions.name));
-      return NextResponse.json({ data: result });
-    }
-    if (type === "neighborhoods") {
-      const regId = searchParams.get("regionId");
-      conditions.push(eq(neighborhoods.campaignId, session.campaignId));
-      if (regId) conditions.push(eq(neighborhoods.regionId, parseInt(regId)));
-      const result = await db.select().from(neighborhoods).where(and(...conditions)).orderBy(asc(neighborhoods.name));
-      return NextResponse.json({ data: result });
-    }
-    if (type === "zones") {
-      conditions.push(eq(electoralZones.campaignId, session.campaignId));
-      const result = await db.select().from(electoralZones).where(and(...conditions));
-      return NextResponse.json({ data: result });
-    }
-    if (type === "sections") {
-      const zoneId = searchParams.get("zoneId");
-      conditions.push(eq(electoralSections.campaignId, session.campaignId));
-      if (zoneId) conditions.push(eq(electoralSections.zoneId, parseInt(zoneId)));
-      const result = await db.select().from(electoralSections).where(and(...conditions));
-      return NextResponse.json({ data: result });
-    }
+
+    // Caso não haja tipo válido ou campaignId
+    return NextResponse.json({ error: "Parâmetros inválidos ou campanha não encontrada" }, { status: 400 });
+  } catch (error: any) {
+    console.error("Erro na API territorial:", error);
+    return NextResponse.json({ error: "Erro interno no servidor." }, { status: 500 });
   }
-
-  return NextResponse.json({ data: [] });
 }
