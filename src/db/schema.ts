@@ -56,15 +56,20 @@ export const neighborhoods = pgTable("neighborhoods", {
 
 export const electoralZones = pgTable("electoral_zones", {
   id: serial("id").primaryKey(),
-  zoneNumber: text("zone_number").notNull(),
+  number: text("number").notNull(),
+  zoneNumber: text("zone_number"),
   municipalityId: integer("municipality_id").references(() => municipalities.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const electoralSections = pgTable("electoral_sections", {
   id: serial("id").primaryKey(),
+  number: text("number"),
   sectionNumber: text("section_number").notNull(),
   zoneId: integer("zone_id").references(() => electoralZones.id),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
   locationName: text("location_name"),
   address: text("address"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
