@@ -79,6 +79,12 @@ export const demandCategories = pgTable("demand_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
+  parentId: integer("parent_id"),
+  icon: text("icon"),
+  color: text("color"),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
+  sortOrder: integer("sort_order").default(0),
+  active: boolean("active").default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
