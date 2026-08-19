@@ -9,9 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "coordenador_regional", "leader", "lideranca"]);
-export type UserRole = (typeof userRoleEnum.enumValues)[number];
-
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "leader"]);
 export const demandStatusEnum = pgEnum("demand_status", ["aberta", "em_andamento", "resolvida", "cancelada"]);
 export const demandPriorityEnum = pgEnum("demand_priority", ["baixa", "media", "alta", "urgente"]);
 export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento", "concluida"]);
