@@ -14,16 +14,17 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get("token")?.value;
+  // O nome correto do cookie de sessão gerado em src/lib/auth.ts é 'jac_session'
+  const token = request.cookies.get("jac_session")?.value;
   const isLoginPage = pathname === "/login";
 
-  // Se for a página de login e já tiver token, manda para o dashboard
+  // Se for a página de login e já tiver sessão ativa, manda para o app
   if (isLoginPage && token) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/app", request.url));
   }
 
-  // Se tentar acessar o painel sem token, manda para o login
-  if (!isLoginPage && !token && pathname.startsWith("/dashboard")) {
+  // Se tentar acessar o painel (/app) sem token, manda para o login
+  if (!isLoginPage && !token && pathname.startsWith("/app")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
