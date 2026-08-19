@@ -168,7 +168,7 @@ async function main() {
       name: "João Coordenador",
       email: "coord@sistema.com",
       passwordHash: coordHash,
-      role: "coordenador_regional",
+      role: "coordinator",
       campaignId: campaign.id,
       parentUserId: superAdmin.id,
     });
