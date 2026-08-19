@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         voterId: Number(voterId),
         assignedTo: assignedTo ? Number(assignedTo) : undefined,
         coordinatorId: coordinatorId ? Number(coordinatorId) : undefined,
-        createdBy: session.userId ? Number(session.userId) : undefined,
+        createdBy: session.id ? Number(session.id) : undefined,
       })
       .returning();
 
