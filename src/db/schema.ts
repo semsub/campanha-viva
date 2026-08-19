@@ -10,6 +10,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "coordenador_regional", "leader", "lideranca"]);
+export type UserRole = (typeof userRoleEnum.enumValues)[number];
+
 export const demandStatusEnum = pgEnum("demand_status", ["aberta", "em_andamento", "resolvida", "cancelada"]);
 export const demandPriorityEnum = pgEnum("demand_priority", ["baixa", "media", "alta", "urgente"]);
 export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento", "concluida"]);
@@ -34,7 +36,7 @@ export const users = pgTable(
     role: userRoleEnum("role").notNull().default("leader"),
     managerId: integer("manager_id"),
     coordinatorId: integer("coordinator_id"),
-    parentUserId: integer("parent_user_id"), // Campo adicionado para corrigir o erro do seed
+    parentUserId: integer("parent_user_id"),
     campaignId: integer("campaign_id").references(() => campaigns.id),
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
@@ -43,8 +45,6 @@ export const users = pgTable(
   },
   (t) => [uniqueIndex("users_email_unique").on(t.email)],
 );
-
-// --- Mantendo o restante das tabelas ---
 
 export const voters = pgTable("voters", {
   id: serial("id").primaryKey(),
