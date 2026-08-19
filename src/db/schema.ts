@@ -9,9 +9,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-// Hierarquia piramidal:
-// super_admin → coordinator → leader
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "leader"]);
+// Enums atualizados com 'coordenador_regional'
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "coordenador_regional", "leader"]);
 export const demandStatusEnum = pgEnum("demand_status", [
   "aberta", "em_andamento", "resolvida", "cancelada",
 ]);
@@ -27,9 +26,6 @@ export const campaigns = pgTable("campaigns", {
   active: boolean("active").default(true),
 });
 
-// USERS
-// managerId: quem criou/supervisiona este usuário (super_admin cria coord; coord cria leader)
-// coordinatorId: para uma liderança, aponta para o coordenador dono; para o próprio coordinator = ele mesmo
 export const users = pgTable(
   "users",
   {
@@ -41,7 +37,7 @@ export const users = pgTable(
     role: userRoleEnum("role").notNull().default("leader"),
     managerId: integer("manager_id"),
     coordinatorId: integer("coordinator_id"),
-    campaignId: integer("campaign_id").references(() => campaigns.id), // <- Adicione esta linha
+    campaignId: integer("campaign_id").references(() => campaigns.id),
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -50,22 +46,18 @@ export const users = pgTable(
   (t) => [uniqueIndex("users_email_unique").on(t.email)],
 );
 
-// VOTERS
-// createdBy: quem cadastrou (super_admin, coord ou leader)
-// leaderId: liderança responsável
-// coordinatorId: coordenador dono (para o escopo pertencer só àquele coordenador)
 export const voters = pgTable("voters", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  phone: text("phone"),                   // (00) 00000-0000
-  voterTitle: text("voter_title"),        // Título eleitoral: 0000 0000 0000
-  zone: text("zone"),                     // Zona eleitoral
-  section: text("section"),               // Seção eleitoral
-  street: text("street"),                 // Rua
-  number: text("number"),                 // Número
-  neighborhood: text("neighborhood"),     // Bairro
-  city: text("city"),                     // Município
-  birthDate: text("birth_date"),          // DD/MM/AAAA (armazenado como texto para preservar formato)
+  phone: text("phone"),
+  voterTitle: text("voter_title"),
+  zone: text("zone"),
+  section: text("section"),
+  street: text("street"),
+  number: text("number"),
+  neighborhood: text("neighborhood"),
+  city: text("city"),
+  birthDate: text("birth_date"),
   notes: text("notes"),
   leaderId: integer("leader_id").references(() => users.id),
   coordinatorId: integer("coordinator_id").references(() => users.id),
@@ -74,7 +66,6 @@ export const voters = pgTable("voters", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// DEMANDS — SEMPRE ligada a um eleitor (histórico do eleitor)
 export const demands = pgTable("demands", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -125,7 +116,6 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// CATEGORIAS E TERRITORIAIS (Necessarias para as rotas da API)
 export const demandCategories = pgTable("demand_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -155,13 +145,13 @@ export const neighborhoods = pgTable("neighborhoods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   regionId: integer("region_id").references(() => regions.id),
-  municipalityId: integer("municipality_id").references(() => municipalities.id), // <- Adicione esta linha
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
   campaignId: integer("campaign_id").references(() => campaigns.id),
 });
 
 export const electoralZones = pgTable("electoral_zones", {
   id: serial("id").primaryKey(),
-  number: text("number").notNull(), // alterado de zone para number
+  number: text("number").notNull(),
   municipalityId: integer("municipality_id").references(() => municipalities.id),
   campaignId: integer("campaign_id").references(() => campaigns.id),
 });
