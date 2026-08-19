@@ -1,59 +1,129 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, ilike, or, sql, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { voters, users, auditLogs } from "@/db/schema";
+import { voters, users } from "@/db/schema";
+import { eq, like, or, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-export async function GET(req: NextRequest) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  const q = new URL(req.url).searchParams.get("q")?.trim();
-  const base = db
-    .select({
-      id: voters.id, name: voters.name, phone: voters.phone, cpf: voters.cpf,
-      address: voters.address, neighborhood: voters.neighborhood, city: voters.city,
-      birthDate: voters.birthDate, notes: voters.notes,
-      leaderId: voters.leaderId, leaderName: users.name,
-      createdAt: voters.createdAt,
-    })
-    .from(voters)
-    .leftJoin(users, eq(voters.leaderId, users.id));
-  const rows = await (q
-    ? base.where(
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get("search") || "";
+    const leaderIdParam = searchParams.get("leaderId");
+
+    let query = db
+      .select({
+        id: voters.id,
+        name: voters.name,
+        phone: voters.phone,
+        voterTitle: voters.voterTitle,
+        zone: voters.zone,
+        section: voters.section,
+        street: voters.street,
+        number: voters.number,
+        neighborhood: voters.neighborhood,
+        city: voters.city,
+        birthDate: voters.birthDate,
+        notes: voters.notes,
+        leaderId: voters.leaderId,
+        leaderName: users.name,
+        createdAt: voters.createdAt,
+      })
+      .from(voters)
+      .leftJoin(users, eq(voters.leaderId, users.id));
+
+    const conditions = [];
+
+    if (search) {
+      conditions.push(
         or(
-          ilike(voters.name, `%${q}%`),
-          ilike(voters.phone, `%${q}%`),
-          ilike(voters.cpf, `%${q}%`),
-          ilike(voters.neighborhood, `%${q}%`),
-        ),
-      )
-    : base.where(sql`TRUE`)
-  ).orderBy(desc(voters.createdAt)).limit(500);
-  return NextResponse.json({ voters: rows });
+          like(voters.name, `%${search}%`),
+          like(voters.phone, `%${search}%`),
+          like(voters.neighborhood, `%${search}%`)
+        )
+      );
+    }
+
+    if (leaderIdParam) {
+      conditions.push(eq(voters.leaderId, Number(leaderIdParam)));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    const result = await query;
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("Erro ao listar eleitores:", error);
+    return NextResponse.json(
+      { error: "Erro interno ao buscar eleitores" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function POST(req: NextRequest) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  const b = (await req.json()) as {
-    name?: string; phone?: string; cpf?: string; address?: string;
-    neighborhood?: string; city?: string; birthDate?: string; notes?: string;
-    leaderId?: number;
-  };
-  if (!b.name) return NextResponse.json({ error: "nome é obrigatório" }, { status: 400 });
-  const [row] = await db.insert(voters).values({
-    name: b.name.trim(),
-    phone: b.phone ?? null, cpf: b.cpf ?? null,
-    address: b.address ?? null, neighborhood: b.neighborhood ?? null,
-    city: b.city ?? null, birthDate: b.birthDate ?? null, notes: b.notes ?? null,
-    leaderId: b.leaderId ?? (s.role === "leader" ? s.id : null),
-  }).returning({ id: voters.id });
-  await db.insert(auditLogs).values({
-    actorId: s.id, action: "voter_create", entity: "voters", entityId: row.id,
-    detail: `Cadastrou eleitor ${b.name}`, ip: req.headers.get("x-forwarded-for"),
-  });
-  return NextResponse.json({ ok: true, id: row.id });
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      name,
+      phone,
+      voterTitle,
+      zone,
+      section,
+      street,
+      number,
+      neighborhood,
+      city,
+      birthDate,
+      notes,
+      leaderId,
+      coordinatorId,
+    } = body;
+
+    if (!name) {
+      return NextResponse.json(
+        { error: "O nome do eleitor é obrigatório" },
+        { status: 400 }
+      );
+    }
+
+    const [row] = await db
+      .insert(voters)
+      .values({
+        name: name.trim(),
+        phone: phone ? phone.trim() : undefined,
+        voterTitle: voterTitle ? voterTitle.trim() : undefined,
+        zone: zone ? zone.trim() : undefined,
+        section: section ? section.trim() : undefined,
+        street: street ? street.trim() : undefined,
+        number: number ? number.trim() : undefined,
+        neighborhood: neighborhood ? neighborhood.trim() : undefined,
+        city: city ? city.trim() : undefined,
+        birthDate: birthDate ? birthDate.trim() : undefined,
+        notes: notes ? notes.trim() : undefined,
+        leaderId: leaderId ? Number(leaderId) : session.role === "leader" ? Number(session.id) : undefined,
+        coordinatorId: coordinatorId ? Number(coordinatorId) : undefined,
+        createdBy: session.id ? Number(session.id) : undefined,
+      })
+      .returning();
+
+    return NextResponse.json({ success: true, voter: row }, { status: 201 });
+  } catch (error: any) {
+    console.error("Erro ao criar eleitor:", error);
+    return NextResponse.json(
+      { error: "Erro interno ao cadastrar eleitor" },
+      { status: 500 }
+    );
+  }
 }
