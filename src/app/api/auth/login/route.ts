@@ -2,16 +2,20 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword, createSession } from "@/lib/auth";
+import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
+
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "sua-chave-secreta-muito-segura-aqui"
+);
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { email, password } = body;
+    const { email, password } = await request.json();
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: "E-mail e senha são obrigatórios." },
+        { error: "E-mail e senha são obrigatórios" },
         { status: 400 }
       );
     }
@@ -24,42 +28,62 @@ export async function POST(request: Request) {
 
     if (!user || !user.active) {
       return NextResponse.json(
-        { error: "Credenciais inválidas ou usuário inativo." },
+        { error: "Credenciais inválidas ou usuário inativo" },
         { status: 401 }
       );
     }
 
-    const passwordMatch = verifyPassword(password, user.passwordHash);
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+
     if (!passwordMatch) {
       return NextResponse.json(
-        { error: "Credenciais inválidas." },
+        { error: "Credenciais inválidas" },
         { status: 401 }
       );
     }
 
-    // Cria a sessão usando o padrão oficial do projeto (cookie jac_session)
-    await createSession({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role as any,
-      territory: user.territory,
-    });
+    // Definindo explicitamente os tipos aceitos para o role na sessão/token
+    const userRole: "super_admin" | "coordinator" | "coordenador_regional" | "leader" | "lideranca" = 
+      user.role as any;
 
-    return NextResponse.json({
+    const token = await new SignJWT({
+      userId: user.id,
+      email: user.email,
+      role: userRole,
+      campaignId: user.campaignId,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("7d")
+      .sign(JWT_SECRET);
+
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: userRole,
         territory: user.territory,
+        coordinatorId: user.coordinatorId,
       },
     });
+
+    response.cookies.set({
+      name: "token",
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 7 dias
+    });
+
+    return response;
   } catch (error: any) {
     console.error("Erro no login:", error);
     return NextResponse.json(
-      { error: "Erro interno no servidor." },
+      { error: "Erro interno no servidor" },
       { status: 500 }
     );
   }
