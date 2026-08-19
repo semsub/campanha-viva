@@ -3,11 +3,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "sua-chave-secreta-muito-segura-aqui"
-);
+import { createSession } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -33,7 +29,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Compatibilidade: tenta validar via bcrypt ou texto plano (caso o banco venha sem hash)
     let passwordMatch = false;
     try {
       passwordMatch = await bcrypt.compare(password, user.passwordHash);
@@ -41,7 +36,6 @@ export async function POST(request: Request) {
       passwordMatch = false;
     }
 
-    // Fallback de segurança caso a senha no banco esteja salva em texto plano temporariamente
     if (!passwordMatch && password === user.passwordHash) {
       passwordMatch = true;
     }
@@ -53,22 +47,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Definindo explicitamente os tipos aceitos para o role na sessão/token
-    const userRole: "super_admin" | "coordinator" | "coordenador_regional" | "leader" | "lideranca" = 
-      user.role as any;
+    const userRole: "super_admin" | "coordinator" | "leader" = 
+      (user.role === "super_admin" || user.role === "coordinator" || user.role === "leader") 
+        ? user.role 
+        : "super_admin";
 
-    const token = await new SignJWT({
-      userId: user.id,
+    // Cria a sessão usando o padrão oficial do lib/auth.ts (cookie 'jac_session')
+    await createSession({
+      id: user.id,
+      name: user.name,
       email: user.email,
       role: userRole,
-      campaignId: user.campaignId,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("7d")
-      .sign(JWT_SECRET);
+      territory: user.territory ?? null,
+      coordinatorId: user.coordinatorId ?? null,
+    });
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -79,18 +73,6 @@ export async function POST(request: Request) {
         coordinatorId: user.coordinatorId,
       },
     });
-
-    response.cookies.set({
-      name: "token",
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 dias
-    });
-
-    return response;
   } catch (error: any) {
     console.error("Erro no login:", error);
     return NextResponse.json(
