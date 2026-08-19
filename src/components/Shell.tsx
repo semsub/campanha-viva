@@ -8,14 +8,15 @@ import { ROLE_LABELS, ROLE_COLORS } from "@/lib/permissions";
 
 type Me = { id: number; name: string; email: string; role: Role };
 
+// Apenas as abas permitidas no escopo geral ou filtradas rigorosamente
 const NAV = [
   { href: "/app", label: "Dashboard", icon: "📊" },
-  { href: "/app/coordenadores", label: "Coordenadores", icon: "🏛️", roles: ["super_admin"] as Role[] },
-  { href: "/app/eleitores", label: "Eleitores", icon: "🧑‍🤝‍🧑" },
+  { href: "/app/eleitores", label: "Eleitores", icon: "🧑🤝🧑" },
   { href: "/app/demandas", label: "Demandas", icon: "📋" },
   { href: "/app/tarefas", label: "Tarefas", icon: "✅" },
   { href: "/app/eventos", label: "Eventos", icon: "📅" },
   { href: "/app/usuarios", label: "Usuários", icon: "👥", roles: ["super_admin", "coordinator"] as Role[] },
+  { href: "/app/coordenadores", label: "Coordenadores", icon: "🏛️", roles: ["super_admin"] as Role[] },
   { href: "/app/auditoria", label: "Auditoria", icon: "🛡️", roles: ["super_admin"] as Role[] },
 ];
 
