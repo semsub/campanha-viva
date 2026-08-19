@@ -151,6 +151,7 @@ export const neighborhoods = pgTable("neighborhoods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   regionId: integer("region_id").references(() => regions.id),
+  municipalityId: integer("municipality_id").references(() => municipalities.id), // <- Adicione esta linha
   campaignId: integer("campaign_id").references(() => campaigns.id),
 });
 
