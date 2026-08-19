@@ -5,6 +5,9 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
@@ -52,7 +55,7 @@ export async function POST(request: Request) {
         ? user.role 
         : "super_admin";
 
-    // Cria a sessão usando o padrão oficial do lib/auth.ts (cookie 'jac_session')
+    // Cria a sessão limpa e isolada para o usuário autenticado
     await createSession({
       id: user.id,
       name: user.name,
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
       coordinatorId: user.coordinatorId ?? null,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user: {
         id: user.id,
@@ -73,6 +76,10 @@ export async function POST(request: Request) {
         coordinatorId: user.coordinatorId,
       },
     });
+
+    // Desativa qualquer cache no navegador para esta resposta de login
+    response.headers.set("Cache-Control", "no-store, max-age=0");
+    return response;
   } catch (error: any) {
     console.error("Erro no login:", error);
     return NextResponse.json(
