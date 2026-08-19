@@ -1,64 +1,91 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, ilike, or, sql, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { demands, voters, users, auditLogs } from "@/db/schema";
+import { demands, voters } from "@/db/schema";
+import { eq, like, or } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-export async function GET(req: NextRequest) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim();
-  const category = url.searchParams.get("category");
-  const status = url.searchParams.get("status");
-  const base = db
-    .select({
-      id: demands.id, title: demands.title, description: demands.description,
-      category: demands.category, status: demands.status, priority: demands.priority,
-      voterId: demands.voterId, voterName: voters.name,
-      assignedTo: demands.assignedTo, assignedName: users.name,
-      createdAt: demands.createdAt, updatedAt: demands.updatedAt,
-    })
-    .from(demands)
-    .leftJoin(voters, eq(demands.voterId, voters.id))
-    .leftJoin(users, eq(demands.assignedTo, users.id));
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get("search") || "";
 
-  const conds = [] as unknown[];
-  if (q) conds.push(or(ilike(demands.title, `%${q}%`), ilike(demands.description, `%${q}%`)));
-  if (category) conds.push(eq(demands.category, category));
-  if (status) conds.push(eq(demands.status, status as "aberta"|"em_andamento"|"resolvida"|"cancelada"));
+    let query = db
+      .select({
+        id: demands.id,
+        title: demands.title,
+        description: demands.description,
+        category: demands.category,
+        status: demands.status,
+        priority: demands.priority,
+        voterId: demands.voterId,
+        voterName: voters.name,
+        createdAt: demands.createdAt,
+      })
+      .from(demands)
+      .leftJoin(voters, eq(demands.voterId, voters.id));
 
-  const rows = await (conds.length
-    ? base.where(sql.join(conds as never[], sql` AND `))
-    : base.where(sql`TRUE`)
-  ).orderBy(desc(demands.createdAt)).limit(500);
-  return NextResponse.json({ demands: rows });
+    if (search) {
+      query = query.where(
+        or(
+          like(demands.title, `%${search}%`),
+          like(demands.category, `%${search}%`)
+        )
+      ) as any;
+    }
+
+    const result = await query;
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("Erro ao listar demandas:", error);
+    return NextResponse.json(
+      { error: "Erro interno ao buscar demandas" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function POST(req: NextRequest) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  const b = (await req.json()) as {
-    title?: string; description?: string; category?: string;
-    priority?: "baixa"|"media"|"alta"|"urgente";
-    voterId?: number; assignedTo?: number;
-  };
-  if (!b.title || !b.category) return NextResponse.json({ error: "título e categoria são obrigatórios" }, { status: 400 });
-  const [row] = await db.insert(demands).values({
-    title: b.title.trim(),
-    description: b.description ?? null,
-    category: b.category,
-    priority: b.priority ?? "media",
-    voterId: b.voterId ?? null,
-    assignedTo: b.assignedTo ?? null,
-    createdBy: s.id,
-  }).returning({ id: demands.id });
-  await db.insert(auditLogs).values({
-    actorId: s.id, action: "demand_create", entity: "demands", entityId: row.id,
-    detail: `Criou demanda: ${b.title}`, ip: req.headers.get("x-forwarded-for"),
-  });
-  return NextResponse.json({ ok: true, id: row.id });
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { title, description, category, priority, voterId, assignedTo, coordinatorId } = body;
+
+    if (!title || !category || !voterId) {
+      return NextResponse.json(
+        { error: "Título, categoria e eleitor são obrigatórios" },
+        { status: 400 }
+      );
+    }
+
+    const [row] = await db
+      .insert(demands)
+      .values({
+        title: title.trim(),
+        description: description ? description.trim() : undefined,
+        category,
+        priority: priority || "media",
+        voterId: Number(voterId),
+        assignedTo: assignedTo ? Number(assignedTo) : undefined,
+        coordinatorId: coordinatorId ? Number(coordinatorId) : undefined,
+        createdBy: session.userId ? Number(session.userId) : undefined,
+      })
+      .returning();
+
+    return NextResponse.json({ success: true, demand: row }, { status: 201 });
+  } catch (error: any) {
+    console.error("Erro ao criar demanda:", error);
+    return NextResponse.json(
+      { error: "Erro interno ao criar demanda" },
+      { status: 500 }
+    );
+  }
 }
