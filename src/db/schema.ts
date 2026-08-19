@@ -41,6 +41,7 @@ export const users = pgTable(
     role: userRoleEnum("role").notNull().default("leader"),
     managerId: integer("manager_id"),
     coordinatorId: integer("coordinator_id"),
+    campaignId: integer("campaign_id").references(() => campaigns.id), // <- Adicione esta linha
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
