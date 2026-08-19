@@ -126,38 +126,30 @@ export const auditLogs = pgTable("audit_logs", {
 });
 
 // CATEGORIAS E TERRITORIAIS (Necessarias para as rotas da API)
-export const demandCategories = pgTable("demand_categories", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  active: boolean("active").default(true),
-});
-
-export const municipalities = pgTable("municipalities", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  state: text("state"),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-});
-
 export const regions = pgTable("regions", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  municipalityId: integer("municipality_id"),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
 });
 
 export const neighborhoods = pgTable("neighborhoods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  regionId: integer("region_id"),
+  regionId: integer("region_id").references(() => regions.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
 });
 
 export const electoralZones = pgTable("electoral_zones", {
   id: serial("id").primaryKey(),
   zone: text("zone").notNull(),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
 });
 
 export const electoralSections = pgTable("electoral_sections", {
   id: serial("id").primaryKey(),
   section: text("section").notNull(),
-  zoneId: integer("zone_id"),
+  zoneId: integer("zone_id").references(() => electoralZones.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
 });
