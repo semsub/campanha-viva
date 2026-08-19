@@ -129,6 +129,10 @@ export const auditLogs = pgTable("audit_logs", {
 export const demandCategories = pgTable("demand_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  parentId: integer("parent_id"),
+  icon: text("icon"),
+  color: text("color"),
+  sortOrder: integer("sort_order").default(0),
   active: boolean("active").default(true),
   campaignId: integer("campaign_id").references(() => campaigns.id),
 });
