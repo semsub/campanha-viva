@@ -33,7 +33,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    // Compatibilidade: tenta validar via bcrypt ou texto plano (caso o banco venha sem hash)
+    let passwordMatch = false;
+    try {
+      passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    } catch {
+      passwordMatch = false;
+    }
+
+    // Fallback de segurança caso a senha no banco esteja salva em texto plano temporariamente
+    if (!passwordMatch && password === user.passwordHash) {
+      passwordMatch = true;
+    }
 
     if (!passwordMatch) {
       return NextResponse.json(
