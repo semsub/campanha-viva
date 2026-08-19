@@ -126,6 +126,20 @@ export const auditLogs = pgTable("audit_logs", {
 });
 
 // CATEGORIAS E TERRITORIAIS (Necessarias para as rotas da API)
+export const demandCategories = pgTable("demand_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  active: boolean("active").default(true),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
+});
+
+export const municipalities = pgTable("municipalities", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  state: text("state"),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
+});
+
 export const regions = pgTable("regions", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
