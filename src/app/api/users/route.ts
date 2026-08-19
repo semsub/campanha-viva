@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { like, or, eq } from "drizzle-orm";
+import { like, or, eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { getSession } from "@/lib/auth";
 
@@ -13,25 +13,41 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const search = searchParams.get("search") || "";
+    const search = searchParams.get("q") || searchParams.get("search") || "";
 
-    let query = db.select().from(users);
+    let conditions = [];
+
+    // Se for coordenador, vê apenas a si mesmo e os líderes vinculados a ele
+    if (session.role === "coordinator") {
+      conditions.push(
+        or(
+          eq(users.id, session.id),
+          eq(users.coordinatorId, session.id)
+        )
+      );
+    } 
+    // Se for leader, normalmente não gerencia usuários, mas se listar, vê apenas a si
+    else if (session.role === "leader") {
+      conditions.push(eq(users.id, session.id));
+    }
+    // super_admin vê tudo (sem condições extras)
 
     if (search) {
-      query = query.where(
+      conditions.push(
         or(
           like(users.name, `%${search}%`),
           like(users.email, `%${search}%`)
         )
-      ) as any;
+      );
     }
 
-    const allUsers = await query;
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    // Remove passwordHash before sending to client
+    const allUsers = await db.select().from(users).where(whereClause);
+
     const safeUsers = allUsers.map(({ passwordHash, ...user }) => user);
 
-    return NextResponse.json(safeUsers);
+    return NextResponse.json({ users: safeUsers });
   } catch (error: any) {
     console.error("Erro ao listar usuários:", error);
     return NextResponse.json(
@@ -49,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, password, role, territory, coordinatorId, campaignId } = body;
+    const { name, email, password, role, territory, campaignId } = body;
 
     if (!name || !email || !password || !role) {
       return NextResponse.json(
@@ -73,6 +89,13 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Se quem está criando for um coordenador, o coordinatorId DEVE ser o ID do coordenador logado.
+    // Se for super_admin, ele pode definir o coordinatorId enviado ou null.
+    const assignedCoordinatorId = 
+      session.role === "coordinator" 
+        ? session.id 
+        : (body.coordinatorId ? Number(body.coordinatorId) : null);
+
     const [newUser] = await db
       .insert(users)
       .values({
@@ -81,7 +104,7 @@ export async function POST(request: NextRequest) {
         passwordHash,
         role,
         territory: territory || null,
-        coordinatorId: coordinatorId ? Number(coordinatorId) : null,
+        coordinatorId: assignedCoordinatorId,
         campaignId: campaignId ? Number(campaignId) : null,
         active: true,
       })
