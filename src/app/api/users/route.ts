@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         role,
         territory: territory || null,
         coordinatorId: coordinatorId ? Number(coordinatorId) : null,
-        campaignId: campaignId ? Number(campaignId) : session.campaignId || null,
+        campaignId: campaignId ? Number(campaignId) : null,
         active: true,
       })
       .returning();
