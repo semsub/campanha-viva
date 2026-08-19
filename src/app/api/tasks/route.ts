@@ -3,23 +3,30 @@ import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks, users, auditLogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-
+import { coordinatorScopeIdForUser } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
 export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const where = s.role === "super_admin"
+    ? sql`TRUE`
+    : s.role === "coordinator"
+      ? eq(tasks.coordinatorId, s.id)
+      : eq(tasks.createdBy, s.id);
   const rows = await db
     .select({
       id: tasks.id, title: tasks.title, description: tasks.description,
       status: tasks.status, dueDate: tasks.dueDate,
       assignedTo: tasks.assignedTo, assignedName: users.name,
+      createdBy: tasks.createdBy, coordinatorId: tasks.coordinatorId,
       createdAt: tasks.createdAt,
     })
     .from(tasks)
     .leftJoin(users, eq(tasks.assignedTo, users.id))
-    .where(sql`TRUE`)
+    .where(where)
     .orderBy(desc(tasks.createdAt))
     .limit(500);
   return NextResponse.json({ tasks: rows });
@@ -37,6 +44,7 @@ export async function POST(req: NextRequest) {
     description: b.description ?? null,
     dueDate: b.dueDate ?? null,
     assignedTo: b.assignedTo ?? null,
+    coordinatorId: coordinatorScopeIdForUser(s),
     createdBy: s.id,
   }).returning({ id: tasks.id });
   await db.insert(auditLogs).values({

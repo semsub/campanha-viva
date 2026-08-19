@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+html, body {
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Bloqueia impressão: quando o usuário der Ctrl+P ou tentar imprimir, exibe uma tela protetora */
+@media print {
+  body * { visibility: hidden !important; }
+  body::before {
+    content: "🛡️ Conteúdo protegido — Júnior Araújo Coordenação";
+    visibility: visible !important;
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 800; color: #003B6F;
+    background: #fff;
+  }
+}

@@ -10,6 +10,7 @@ type Me = { id: number; name: string; email: string; role: Role };
 
 const NAV = [
   { href: "/app", label: "Dashboard", icon: "📊" },
+  { href: "/app/coordenadores", label: "Coordenadores", icon: "🏛️", roles: ["super_admin"] as Role[] },
   { href: "/app/eleitores", label: "Eleitores", icon: "🧑‍🤝‍🧑" },
   { href: "/app/demandas", label: "Demandas", icon: "📋" },
   { href: "/app/tarefas", label: "Tarefas", icon: "✅" },

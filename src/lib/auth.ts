@@ -19,6 +19,7 @@ export type SessionUser = {
   email: string;
   role: "super_admin" | "coordinator" | "leader";
   territory: string | null;
+  coordinatorId: number | null; // para leader: id do coord dono; para coord: o próprio id
 };
 
 function sign(payload: string): string {
@@ -72,6 +73,7 @@ export async function getSession(): Promise<SessionUser | null> {
       email: data.email,
       role: data.role,
       territory: data.territory,
+      coordinatorId: data.coordinatorId ?? null,
     };
   } catch {
     return null;

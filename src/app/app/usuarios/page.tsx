@@ -9,16 +9,20 @@ type U = {
   id: number; name: string; email: string; phone: string | null;
   role: "super_admin"|"coordinator"|"leader"; territory: string | null;
   active: boolean; createdAt: string;
+  coordinatorId: number | null; managerId: number | null;
 };
 
-const empty = { name: "", email: "", phone: "", password: "", role: "leader" as U["role"], territory: "" };
+type Me = { id: number; role: "super_admin"|"coordinator"|"leader" };
+
+const emptyForm = { name: "", email: "", phone: "", password: "", role: "leader" as U["role"], territory: "" };
 
 export default function UsuariosPage() {
+  const [me, setMe] = useState<Me | null>(null);
   const [rows, setRows] = useState<U[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [openModal, setOpenModal] = useState(false);
-  const [form, setForm] = useState(empty);
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -26,12 +30,30 @@ export default function UsuariosPage() {
   const [pw, setPw] = useState("");
   const [pwMsg, setPwMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.json()).then((d) => setMe(d.user));
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     const d = await fetch(`/api/users?q=${encodeURIComponent(q)}`).then((r) => r.json());
     setRows(d.users ?? []); setLoading(false);
   }, [q]);
   useEffect(() => { load(); }, [load]);
+
+  const isSuper = me?.role === "super_admin";
+  const isCoord = me?.role === "coordinator";
+
+  // Papéis que ESTE usuário pode criar
+  const availableRoles: U["role"][] =
+    isSuper ? ["coordinator", "leader"]
+    : isCoord ? ["leader"]
+    : [];
+
+  function openNew() {
+    setForm({ ...emptyForm, role: availableRoles[0] ?? "leader" });
+    setError(null); setOpenModal(true);
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError(null);
@@ -42,15 +64,15 @@ export default function UsuariosPage() {
     const d = await r.json();
     setSaving(false);
     if (!r.ok) { setError(d.error ?? "erro"); return; }
-    setOpenModal(false); setForm(empty); load();
+    setOpenModal(false); setForm(emptyForm); load();
   }
 
   async function toggle(u: U) {
-    await fetch(`/api/users/${u.id}`, {
+    const r = await fetch(`/api/users/${u.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: !u.active }),
     });
-    load();
+    if (r.ok) load(); else { const d = await r.json(); alert(d.error); }
   }
 
   async function del(u: U) {
@@ -73,10 +95,20 @@ export default function UsuariosPage() {
     setTimeout(() => { setPwOpen(null); setPw(""); setPwMsg(null); }, 1200);
   }
 
+  // Filtro visual: coord vê seus leaders + ele mesmo
+  const displayed = rows;
+
   return (
     <div>
-      <PageHeader title="Usuários" subtitle={`${rows.length} usuário(s)`}
-        actions={<Btn onClick={() => { setForm(empty); setError(null); setOpenModal(true); }}>+ Novo usuário</Btn>} />
+      <PageHeader
+        title="Usuários"
+        subtitle={
+          isSuper ? `${displayed.length} usuário(s) — visão total`
+          : isCoord ? `${displayed.length} usuário(s) — sua equipe`
+          : "Sem permissão para gerenciar usuários"
+        }
+        actions={availableRoles.length > 0 ? <Btn onClick={openNew}>+ Novo usuário</Btn> : undefined}
+      />
 
       <Card className="p-4 mb-4">
         <Input placeholder="Buscar por nome ou email…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -85,7 +117,7 @@ export default function UsuariosPage() {
       <Card className="overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-slate-400">Carregando…</div>
-        ) : rows.length === 0 ? (
+        ) : displayed.length === 0 ? (
           <EmptyState title="Sem usuários" />
         ) : (
           <div className="overflow-x-auto">
@@ -101,26 +133,39 @@ export default function UsuariosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-semibold text-[#003B6F]">{u.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${ROLE_COLORS[u.role]}`}>
-                        {ROLE_LABELS[u.role]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{u.territory ?? "-"}</td>
-                    <td className="px-4 py-3">
-                      {u.active ? <Badge color="green">Ativo</Badge> : <Badge color="red">Inativo</Badge>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button className="text-orange-600 font-semibold mr-3" onClick={() => { setPwOpen(u); setPw(""); setPwMsg(null); }}>Senha</button>
-                      <button className="text-[#003B6F] font-semibold mr-3" onClick={() => toggle(u)}>{u.active ? "Desativar" : "Ativar"}</button>
-                      <button className="text-red-600 font-semibold" onClick={() => del(u)}>Excluir</button>
-                    </td>
-                  </tr>
-                ))}
+                {displayed.map((u) => {
+                  const canManage =
+                    (isSuper) ||
+                    (isCoord && u.role === "leader" && u.coordinatorId === me?.id);
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-semibold text-[#003B6F]">{u.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{u.email}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${ROLE_COLORS[u.role]}`}>
+                          {ROLE_LABELS[u.role]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{u.territory ?? "-"}</td>
+                      <td className="px-4 py-3">
+                        {u.active ? <Badge color="green">Ativo</Badge> : <Badge color="red">Inativo</Badge>}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {canManage ? (
+                          <>
+                            {isSuper && (
+                              <button className="text-orange-600 font-semibold mr-3" onClick={() => { setPwOpen(u); setPw(""); setPwMsg(null); }}>Senha</button>
+                            )}
+                            <button className="text-[#003B6F] font-semibold mr-3" onClick={() => toggle(u)}>{u.active ? "Desativar" : "Ativar"}</button>
+                            <button className="text-red-600 font-semibold" onClick={() => del(u)}>Excluir</button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-400">— sem permissão —</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -138,9 +183,9 @@ export default function UsuariosPage() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Perfil *">
               <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as U["role"] })}>
-                <option value="leader">Liderança</option>
-                <option value="coordinator">Coordenador</option>
-                <option value="super_admin">Super Admin</option>
+                {availableRoles.map((r) => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
               </Select>
             </Field>
             <Field label="Território/região"><Input value={form.territory} onChange={(e) => setForm({ ...form, territory: e.target.value })} /></Field>

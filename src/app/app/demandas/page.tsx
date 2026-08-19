@@ -9,9 +9,10 @@ type Demand = {
   id: number; title: string; description: string | null;
   category: string; status: string; priority: string;
   voterId: number | null; voterName: string | null;
-  assignedTo: number | null; assignedName: string | null;
   createdAt: string;
 };
+
+type Voter = { id: number; name: string };
 
 const statusColor: Record<string, string> = {
   aberta: "yellow", em_andamento: "blue", resolvida: "green", cancelada: "red",
@@ -20,17 +21,22 @@ const priorityColor: Record<string, string> = {
   baixa: "slate", media: "blue", alta: "orange", urgente: "red",
 };
 
-const empty = { title: "", description: "", category: "saude", priority: "media" as "baixa"|"media"|"alta"|"urgente" };
+const emptyForm = {
+  title: "", description: "", category: "saude",
+  priority: "media" as "baixa"|"media"|"alta"|"urgente",
+  voterId: "",
+};
 
 export default function DemandasPage() {
   const [rows, setRows] = useState<Demand[]>([]);
+  const [voters, setVoters] = useState<Voter[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [fCat, setFCat] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [openModal, setOpenModal] = useState(false);
   const [editing, setEditing] = useState<Demand | null>(null);
-  const [form, setForm] = useState(empty);
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,14 +54,19 @@ export default function DemandasPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    fetch("/api/voters").then((r) => r.json()).then((d) => setVoters(d.voters ?? []));
+  }, []);
+
   function openNew() {
-    setEditing(null); setForm(empty); setError(null); setOpenModal(true);
+    setEditing(null); setForm(emptyForm); setError(null); setOpenModal(true);
   }
   function openEdit(d: Demand) {
     setEditing(d);
     setForm({
       title: d.title, description: d.description ?? "",
       category: d.category, priority: d.priority as "baixa"|"media"|"alta"|"urgente",
+      voterId: d.voterId ? String(d.voterId) : "",
     });
     setError(null); setOpenModal(true);
   }
@@ -65,9 +76,16 @@ export default function DemandasPage() {
     try {
       const method = editing ? "PATCH" : "POST";
       const url = editing ? `/api/demands/${editing.id}` : "/api/demands";
+      const body: Record<string, unknown> = { ...form };
+      if (!editing) {
+        if (!form.voterId) { setError("Selecione um eleitor"); setSaving(false); return; }
+        body.voterId = Number(form.voterId);
+      } else {
+        delete body.voterId; // não permite trocar eleitor de uma demanda existente
+      }
       const res = await fetch(url, {
         method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "falha");
@@ -88,7 +106,7 @@ export default function DemandasPage() {
   async function del(d: Demand) {
     if (!confirm(`Excluir demanda "${d.title}"?`)) return;
     const r = await fetch(`/api/demands/${d.id}`, { method: "DELETE" });
-    if (r.ok) load(); else alert("Erro ou sem permissão.");
+    if (r.ok) load(); else { const j = await r.json(); alert(j.error); }
   }
 
   return (
@@ -134,8 +152,12 @@ export default function DemandasPage() {
                         <div className="flex flex-wrap items-center gap-2 mt-1">
                           <Badge color="slate">{cat.label}</Badge>
                           <Badge color={statusColor[d.status]}>{d.status.replace("_", " ")}</Badge>
-                          <Badge color={priorityColor[d.priority]}>Prioridade {d.priority}</Badge>
-                          {d.voterName && <span className="text-xs text-slate-500">Eleitor: {d.voterName}</span>}
+                          <Badge color={priorityColor[d.priority]}>{d.priority}</Badge>
+                          {d.voterName && (
+                            <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded font-semibold">
+                              👤 {d.voterName}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="text-xs text-slate-400 whitespace-nowrap">{formatDate(d.createdAt)}</div>
@@ -158,6 +180,19 @@ export default function DemandasPage() {
 
       <Modal open={openModal} onClose={() => setOpenModal(false)} title={editing ? "Editar demanda" : "Nova demanda"}>
         <form onSubmit={save} className="space-y-3">
+          {!editing && (
+            <Field label="Eleitor * (obrigatório)">
+              <Select required value={form.voterId} onChange={(e) => setForm({ ...form, voterId: e.target.value })}>
+                <option value="">— selecione o eleitor —</option>
+                {voters.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </Select>
+              {voters.length === 0 && (
+                <div className="text-xs text-orange-600 mt-1">
+                  ⚠️ Nenhum eleitor cadastrado. Cadastre um em &quot;Eleitores&quot; primeiro.
+                </div>
+              )}
+            </Field>
+          )}
           <Field label="Título *">
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>

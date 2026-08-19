@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import InstallPwaButton from "@/components/InstallPwaButton";
 
 type BootstrapStatus = {
   hasDatabaseUrl: boolean;
@@ -210,6 +211,8 @@ export default function LoginPage() {
               ✅ Sistema pronto. Admin: <b>{status.adminEmail}</b>
             </div>
           )}
+
+          <InstallPwaButton />
 
           <p className="mt-6 text-center text-xs text-[#6B7A8F] leading-relaxed">
             Esqueceu a senha? Solicite ao <b>Super Admin</b>.<br />

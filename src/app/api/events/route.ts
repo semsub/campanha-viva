@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { events, auditLogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-
+import { coordinatorScopeIdForUser } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
 export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  const rows = await db.select().from(events).where(sql`TRUE`).orderBy(desc(events.eventDate)).limit(500);
+  const where = s.role === "super_admin"
+    ? sql`TRUE`
+    : s.role === "coordinator"
+      ? eq(events.coordinatorId, s.id)
+      : eq(events.createdBy, s.id);
+  const rows = await db.select().from(events).where(where).orderBy(desc(events.eventDate)).limit(500);
   return NextResponse.json({ events: rows });
 }
 
@@ -28,6 +34,7 @@ export async function POST(req: NextRequest) {
     description: b.description ?? null,
     location: b.location ?? null,
     eventDate: b.eventDate,
+    coordinatorId: coordinatorScopeIdForUser(s),
     createdBy: s.id,
   }).returning({ id: events.id });
   await db.insert(auditLogs).values({
