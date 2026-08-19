@@ -21,6 +21,8 @@ export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento",
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  description: text("description"),
+  state: text("state"),
   createdAt: timestamp("created_at").defaultNow(),
   active: boolean("active").default(true),
 });
