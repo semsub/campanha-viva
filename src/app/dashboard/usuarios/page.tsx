@@ -31,7 +31,7 @@ export default function UsersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (search) params.set("q", search);
+    if (search) params.set("search", search);
     
     const sessionRes = await fetch("/api/auth/session");
     if (sessionRes.ok) {
@@ -43,7 +43,9 @@ export default function UsersPage() {
 
     const res = await fetch(`/api/users?${params}`);
     const data = await res.json();
-    setUsers(data.users || []);
+    // Ajustado para aceitar tanto array puro quanto objeto com propriedade users
+    const userList = Array.isArray(data) ? data : (data.users || []);
+    setUsers(userList);
     setLoading(false);
   }, [search]);
 
