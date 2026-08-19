@@ -9,19 +9,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-export const userRoleEnum = pgEnum("user_role", [
-  "super_admin",
-  "coordinator",
-  "coordenador_regional",
-  "leader",
-  "lideranca",
-]);
-
+// Hierarquia piramidal:
+// super_admin → coordinator → leader
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "coordinator", "leader"]);
 export const demandStatusEnum = pgEnum("demand_status", [
-  "aberta",
-  "em_andamento",
-  "resolvida",
-  "cancelada",
+  "aberta", "em_andamento", "resolvida", "cancelada",
 ]);
 export const demandPriorityEnum = pgEnum("demand_priority", ["baixa", "media", "alta", "urgente"]);
 export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento", "concluida"]);
@@ -29,71 +21,13 @@ export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento",
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  description: text("description"),
-  state: text("state").default("PA"),
   createdAt: timestamp("created_at").defaultNow(),
   active: boolean("active").default(true),
 });
 
-export const municipalities = pgTable("municipalities", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  state: text("state").notNull().default("PA"),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const regions = pgTable("regions", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  municipalityId: integer("municipality_id").references(() => municipalities.id),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const neighborhoods = pgTable("neighborhoods", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  regionId: integer("region_id").references(() => regions.id),
-  municipalityId: integer("municipality_id").references(() => municipalities.id),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const electoralZones = pgTable("electoral_zones", {
-  id: serial("id").primaryKey(),
-  number: text("number").notNull(),
-  zoneNumber: text("zone_number"),
-  municipalityId: integer("municipality_id").references(() => municipalities.id),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const electoralSections = pgTable("electoral_sections", {
-  id: serial("id").primaryKey(),
-  number: text("number"),
-  sectionNumber: text("section_number").notNull(),
-  zoneId: integer("zone_id").references(() => electoralZones.id),
-  municipalityId: integer("municipality_id").references(() => municipalities.id),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-  locationName: text("location_name"),
-  address: text("address"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const demandCategories = pgTable("demand_categories", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  parentId: integer("parent_id"),
-  icon: text("icon"),
-  color: text("color"),
-  campaignId: integer("campaign_id").references(() => campaigns.id),
-  sortOrder: integer("sort_order").default(0),
-  active: boolean("active").default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
+// USERS
+// managerId: quem criou/supervisiona este usuário (super_admin cria coord; coord cria leader)
+// coordinatorId: para uma liderança, aponta para o coordenador dono; para o próprio coordinator = ele mesmo
 export const users = pgTable(
   "users",
   {
@@ -104,8 +38,7 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     role: userRoleEnum("role").notNull().default("leader"),
     managerId: integer("manager_id"),
-    parentUserId: integer("parent_user_id"),
-    campaignId: integer("campaign_id").references(() => campaigns.id),
+    coordinatorId: integer("coordinator_id"),
     territory: text("territory"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -114,21 +47,31 @@ export const users = pgTable(
   (t) => [uniqueIndex("users_email_unique").on(t.email)],
 );
 
+// VOTERS
+// createdBy: quem cadastrou (super_admin, coord ou leader)
+// leaderId: liderança responsável
+// coordinatorId: coordenador dono (para o escopo pertencer só àquele coordenador)
 export const voters = pgTable("voters", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  phone: text("phone"),
-  cpf: text("cpf"),
-  address: text("address"),
-  neighborhood: text("neighborhood"),
-  city: text("city"),
-  birthDate: text("birth_date"),
+  phone: text("phone"),                   // (00) 00000-0000
+  voterTitle: text("voter_title"),        // Título eleitoral: 0000 0000 0000
+  zone: text("zone"),                     // Zona eleitoral
+  section: text("section"),               // Seção eleitoral
+  street: text("street"),                 // Rua
+  number: text("number"),                 // Número
+  neighborhood: text("neighborhood"),     // Bairro
+  city: text("city"),                     // Município
+  birthDate: text("birth_date"),          // DD/MM/AAAA (armazenado como texto para preservar formato)
   notes: text("notes"),
   leaderId: integer("leader_id").references(() => users.id),
+  coordinatorId: integer("coordinator_id").references(() => users.id),
+  createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// DEMANDS — SEMPRE ligada a um eleitor (histórico do eleitor)
 export const demands = pgTable("demands", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -136,8 +79,9 @@ export const demands = pgTable("demands", {
   category: text("category").notNull(),
   status: demandStatusEnum("status").notNull().default("aberta"),
   priority: demandPriorityEnum("priority").notNull().default("media"),
-  voterId: integer("voter_id").references(() => voters.id),
+  voterId: integer("voter_id").references(() => voters.id).notNull(),
   assignedTo: integer("assigned_to").references(() => users.id),
+  coordinatorId: integer("coordinator_id").references(() => users.id),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -150,6 +94,7 @@ export const tasks = pgTable("tasks", {
   status: taskStatusEnum("status").notNull().default("pendente"),
   dueDate: text("due_date"),
   assignedTo: integer("assigned_to").references(() => users.id),
+  coordinatorId: integer("coordinator_id").references(() => users.id),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -160,6 +105,7 @@ export const events = pgTable("events", {
   description: text("description"),
   location: text("location"),
   eventDate: text("event_date").notNull(),
+  coordinatorId: integer("coordinator_id").references(() => users.id),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -174,4 +120,39 @@ export const auditLogs = pgTable("audit_logs", {
   detail: text("detail"),
   ip: text("ip"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// CATEGORIAS E TERRITORIAIS (Necessarias para as rotas da API)
+export const demandCategories = pgTable("demand_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  active: boolean("active").default(true),
+});
+
+export const municipalities = pgTable("municipalities", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+});
+
+export const regions = pgTable("regions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  municipalityId: integer("municipality_id"),
+});
+
+export const neighborhoods = pgTable("neighborhoods", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  regionId: integer("region_id"),
+});
+
+export const electoralZones = pgTable("electoral_zones", {
+  id: serial("id").primaryKey(),
+  zone: text("zone").notNull(),
+});
+
+export const electoralSections = pgTable("electoral_sections", {
+  id: serial("id").primaryKey(),
+  section: text("section").notNull(),
+  zoneId: integer("zone_id"),
 });
