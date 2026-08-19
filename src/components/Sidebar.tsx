@@ -14,9 +14,9 @@ interface SidebarProps {
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
 
-  // Forçar a restrição baseada na role do usuário
-  // Se for 'coordinator', ele NUNCA deve ver admin/auditoria
-  const isSuperAdmin = user.role === "super_admin";
+  // FORÇAR: Se o role for 'coordinator', ele NUNCA será admin.
+  // Isso protege contra qualquer dado vindo errado do servidor.
+  const isActuallyAdmin = user.role === "super_admin";
 
   return (
     <aside className="w-64 bg-brand-blue text-white flex flex-col h-screen justify-between shadow-lg">
@@ -30,24 +30,30 @@ export function Sidebar({ user }: SidebarProps) {
         </div>
 
         <nav className="p-4 space-y-1.5">
-          <Link href="/app" className={`menu-link ${pathname === "/app" ? "active" : ""}`}>📊 Dashboard</Link>
+          <Link href="/app" className="menu-link">📊 Dashboard</Link>
           
-          {isSuperAdmin && (
-            <Link href="/app/coordenadores" className={`menu-link ${pathname.includes("/coordenadores") ? "active" : ""}`}>👥 Coordenadores</Link>
+          {/* Aba Coordenadores: Apenas para ADMINS */}
+          {isActuallyAdmin && (
+            <Link href="/app/coordenadores" className="menu-link">👥 Coordenadores</Link>
           )}
 
-          <Link href="/app/eleitores" className={`menu-link ${pathname.includes("/eleitores") ? "active" : ""}`}>🗳️ Eleitores</Link>
-          <Link href="/app/demandas" className={`menu-link ${pathname.includes("/demandas") ? "active" : ""}`}>📋 Demandas</Link>
-          <Link href="/app/tarefas" className={`menu-link ${pathname.includes("/tarefas") ? "active" : ""}`}>✅ Tarefas</Link>
-          <Link href="/app/eventos" className={`menu-link ${pathname.includes("/eventos") ? "active" : ""}`}>📅 Eventos</Link>
-          <Link href="/app/usuarios" className={`menu-link ${pathname.includes("/usuarios") ? "active" : ""}`}>👥 Usuários</Link>
+          <Link href="/app/eleitores" className="menu-link">🗳️ Eleitores</Link>
+          <Link href="/app/demandas" className="menu-link">📋 Demandas</Link>
+          <Link href="/app/tarefas" className="menu-link">✅ Tarefas</Link>
+          <Link href="/app/eventos" className="menu-link">📅 Eventos</Link>
+          <Link href="/app/usuarios" className="menu-link">👥 Usuários</Link>
 
-          {isSuperAdmin && (
-            <Link href="/app/auditoria" className={`menu-link ${pathname.includes("/auditoria") ? "active" : ""}`}>🛡️ Auditoria</Link>
+          {/* Aba Auditoria: Apenas para ADMINS */}
+          {isActuallyAdmin && (
+            <Link href="/app/auditoria" className="menu-link">🛡️ Auditoria</Link>
           )}
         </nav>
       </div>
-      {/* ... rodapé ... */}
+
+      <div className="p-4 border-t border-white/10 bg-black/20">
+        <p className="text-[10px] text-gray-400 uppercase tracking-widest">{user.role}</p>
+        <a href="/api/auth/logout" className="mt-3 block w-full bg-red-600/80 text-white text-center text-xs py-2 rounded-lg">🚪 Sair</a>
+      </div>
     </aside>
   );
 }
