@@ -183,7 +183,7 @@ async function main() {
       name: "Maria Liderança",
       email: "lider@sistema.com",
       passwordHash: liderHash,
-      role: "lideranca",
+      role: "leader",
       campaignId: campaign.id,
       parentUserId: superAdmin.id,
     });
