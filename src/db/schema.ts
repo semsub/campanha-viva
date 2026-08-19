@@ -157,7 +157,7 @@ export const neighborhoods = pgTable("neighborhoods", {
 
 export const electoralZones = pgTable("electoral_zones", {
   id: serial("id").primaryKey(),
-  zone: text("zone").notNull(),
+  number: text("number").notNull(), // alterado de zone para number
   municipalityId: integer("municipality_id").references(() => municipalities.id),
   campaignId: integer("campaign_id").references(() => campaigns.id),
 });
