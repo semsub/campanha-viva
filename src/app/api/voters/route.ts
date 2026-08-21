@@ -19,11 +19,20 @@ export async function GET(request: NextRequest) {
 
     let conditions = [];
 
-    if (session.role === "coordinator") {
+    // Uso de coerção (as any) para evitar conflitos de tipos do enum de roles no TypeScript
+    const role = (session as any).role;
+
+    if (role === "coordinator" || role === "coordenador_regional") {
       conditions.push(eq(voters.coordinatorId, session.id));
-    } else if (session.role === "leader") {
-      conditions.push(eq(voters.userId, session.id));
+    } else if (role === "leader" || role === "lideranca") {
+      conditions.push(
+        or(
+          eq(voters.leaderId, session.id),
+          eq(voters.createdBy, session.id)
+        )
+      );
     }
+    // Se for super_admin, não aplica restrição extra (vê tudo)
 
     if (search) {
       conditions.push(
