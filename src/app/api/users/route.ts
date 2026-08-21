@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { like, or, eq, and, sql } from "drizzle-orm";
+import { like, or, eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +20,6 @@ export async function GET(request: NextRequest) {
 
     let conditions = [];
 
-    // Se for coordenador, vê apenas a si mesmo e os líderes vinculados a ele
     if (session.role === "coordinator") {
       conditions.push(
         or(
@@ -25,12 +27,9 @@ export async function GET(request: NextRequest) {
           eq(users.coordinatorId, session.id)
         )
       );
-    } 
-    // Se for leader, normalmente não gerencia usuários, mas se listar, vê apenas a si
-    else if (session.role === "leader") {
+    } else if (session.role === "leader") {
       conditions.push(eq(users.id, session.id));
     }
-    // super_admin vê tudo (sem condições extras)
 
     if (search) {
       conditions.push(
@@ -42,18 +41,15 @@ export async function GET(request: NextRequest) {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
     const allUsers = await db.select().from(users).where(whereClause);
-
     const safeUsers = allUsers.map(({ passwordHash, ...user }) => user);
 
-    return NextResponse.json({ users: safeUsers });
+    const response = NextResponse.json({ users: safeUsers });
+    response.headers.set("Cache-Control", "no-store, no-cache, must-validate, proxy-revalidate");
+    return response;
   } catch (error: any) {
     console.error("Erro ao listar usuários:", error);
-    return NextResponse.json(
-      { error: "Erro interno ao buscar usuários" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erro interno ao buscar usuários" }, { status: 500 });
   }
 }
 
@@ -68,56 +64,29 @@ export async function POST(request: NextRequest) {
     const { name, email, password, role, territory, campaignId } = body;
 
     if (!name || !email || !password || !role) {
-      return NextResponse.json(
-        { error: "Preencha todos os campos obrigatórios" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Preencha todos os campos obrigatórios" }, { status: 400 });
     }
 
-    const [existingUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-
+    const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (existingUser) {
-      return NextResponse.json(
-        { error: "E-mail já cadastrado no sistema" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "E-mail já cadastrado no sistema" }, { status: 400 });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
+    const assignedCoordinatorId = session.role === "coordinator" ? session.id : (body.coordinatorId ? Number(body.coordinatorId) : null);
 
-    // Se quem está criando for um coordenador, o coordinatorId DEVE ser o ID do coordenador logado.
-    // Se for super_admin, ele pode definir o coordinatorId enviado ou null.
-    const assignedCoordinatorId = 
-      session.role === "coordinator" 
-        ? session.id 
-        : (body.coordinatorId ? Number(body.coordinatorId) : null);
-
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        name,
-        email,
-        passwordHash,
-        role,
-        territory: territory || null,
-        coordinatorId: assignedCoordinatorId,
-        campaignId: campaignId ? Number(campaignId) : null,
-        active: true,
-      })
-      .returning();
+    const [newUser] = await db.insert(users).values({
+      name, email, passwordHash, role,
+      territory: territory || null,
+      coordinatorId: assignedCoordinatorId,
+      campaignId: campaignId ? Number(campaignId) : null,
+      active: true,
+    }).returning();
 
     const { passwordHash: _, ...safeUser } = newUser;
-
     return NextResponse.json({ success: true, user: safeUser }, { status: 201 });
   } catch (error: any) {
     console.error("Erro ao criar usuário:", error);
-    return NextResponse.json(
-      { error: "Erro interno ao cadastrar usuário" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erro interno ao cadastrar usuário" }, { status: 500 });
   }
 }

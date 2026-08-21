@@ -1,5 +1,9 @@
 {
-  "appId": "br.com.campanhaviva.app",
+  "appId": "com.campanhaviva.app",
   "appName": "Campanha Viva",
-  "webDir": "public"
+  "webDir": ".next",
+  "server": {
+    "url": "https://campanha-viva.onrender.com",
+    "cleartext": true
+  }
 }

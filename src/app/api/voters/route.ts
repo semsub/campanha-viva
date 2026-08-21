@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { voters, users } from "@/db/schema";
-import { eq, like, or, and } from "drizzle-orm";
+import { voters } from "@/db/schema";
+import { like, or, eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,31 +15,15 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const search = searchParams.get("search") || "";
-    const leaderIdParam = searchParams.get("leaderId");
+    const search = searchParams.get("q") || searchParams.get("search") || "";
 
-    let query = db
-      .select({
-        id: voters.id,
-        name: voters.name,
-        phone: voters.phone,
-        voterTitle: voters.voterTitle,
-        zone: voters.zone,
-        section: voters.section,
-        street: voters.street,
-        number: voters.number,
-        neighborhood: voters.neighborhood,
-        city: voters.city,
-        birthDate: voters.birthDate,
-        notes: voters.notes,
-        leaderId: voters.leaderId,
-        leaderName: users.name,
-        createdAt: voters.createdAt,
-      })
-      .from(voters)
-      .leftJoin(users, eq(voters.leaderId, users.id));
+    let conditions = [];
 
-    const conditions = [];
+    if (session.role === "coordinator") {
+      conditions.push(eq(voters.coordinatorId, session.id));
+    } else if (session.role === "leader") {
+      conditions.push(eq(voters.userId, session.id));
+    }
 
     if (search) {
       conditions.push(
@@ -48,82 +35,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (leaderIdParam) {
-      conditions.push(eq(voters.leaderId, Number(leaderIdParam)));
-    }
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const allVoters = await db.select().from(voters).where(whereClause);
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as any;
-    }
-
-    const result = await query;
-    return NextResponse.json(result);
+    const response = NextResponse.json({ voters: allVoters });
+    response.headers.set("Cache-Control", "no-store, no-cache, must-validate, proxy-revalidate");
+    return response;
   } catch (error: any) {
     console.error("Erro ao listar eleitores:", error);
-    return NextResponse.json(
-      { error: "Erro interno ao buscar eleitores" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const {
-      name,
-      phone,
-      voterTitle,
-      zone,
-      section,
-      street,
-      number,
-      neighborhood,
-      city,
-      birthDate,
-      notes,
-      leaderId,
-      coordinatorId,
-    } = body;
-
-    if (!name) {
-      return NextResponse.json(
-        { error: "O nome do eleitor é obrigatório" },
-        { status: 400 }
-      );
-    }
-
-    const [row] = await db
-      .insert(voters)
-      .values({
-        name: name.trim(),
-        phone: phone ? phone.trim() : undefined,
-        voterTitle: voterTitle ? voterTitle.trim() : undefined,
-        zone: zone ? zone.trim() : undefined,
-        section: section ? section.trim() : undefined,
-        street: street ? street.trim() : undefined,
-        number: number ? number.trim() : undefined,
-        neighborhood: neighborhood ? neighborhood.trim() : undefined,
-        city: city ? city.trim() : undefined,
-        birthDate: birthDate ? birthDate.trim() : undefined,
-        notes: notes ? notes.trim() : undefined,
-        leaderId: leaderId ? Number(leaderId) : session.role === "leader" ? Number(session.id) : undefined,
-        coordinatorId: coordinatorId ? Number(coordinatorId) : undefined,
-        createdBy: session.id ? Number(session.id) : undefined,
-      })
-      .returning();
-
-    return NextResponse.json({ success: true, voter: row }, { status: 201 });
-  } catch (error: any) {
-    console.error("Erro ao criar eleitor:", error);
-    return NextResponse.json(
-      { error: "Erro interno ao cadastrar eleitor" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erro interno ao buscar eleitores" }, { status: 500 });
   }
 }
