@@ -1,56 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { demands, auditLogs } from "@/db/schema";
-import { getSession } from "@/lib/auth";
-import { canAccessRow } from "@/lib/scope";
+import { demands } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { getSessionFromRequest } from "@/lib/api-auth";
+import { logAudit } from "@/lib/audit";
+import { ensureSetup } from "@/lib/setup";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
-async function loadDemand(id: number) {
-  const [d] = await db.select().from(demands).where(eq(demands.id, id));
-  return d ?? null;
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const session = getSessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  await ensureSetup();
+  const { id } = await ctx.params;
+  const [demand] = await db.select().from(demands).where(eq(demands.id, Number(id)));
+  if (!demand) return NextResponse.json({ error: "Não encontrada." }, { status: 404 });
+  return NextResponse.json({ demand });
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const session = getSessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  await ensureSetup();
   const { id } = await ctx.params;
-  const did = Number(id);
-  const d = await loadDemand(did);
-  if (!d) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
-  if (!canAccessRow(s, { coordinatorId: d.coordinatorId, createdBy: d.createdBy })) {
-    return NextResponse.json({ error: "sem permissão" }, { status: 403 });
-  }
+  const body = await req.json();
+  const [existing] = await db.select().from(demands).where(eq(demands.id, Number(id)));
+  if (!existing) return NextResponse.json({ error: "Não encontrada." }, { status: 404 });
 
-  const b = (await req.json()) as Record<string, unknown>;
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const k of ["title","description","category","status","priority"] as const) {
-    if (b[k] !== undefined) patch[k] = b[k];
-  }
-  await db.update(demands).set(patch).where(eq(demands.id, did));
-  await db.insert(auditLogs).values({
-    actorId: s.id, action: "demand_update", entity: "demands", entityId: did,
-    detail: JSON.stringify(patch), ip: req.headers.get("x-forwarded-for"),
-  });
-  return NextResponse.json({ ok: true });
-}
+  const [updated] = await db.update(demands).set({
+    ...body, updatedAt: new Date(),
+    ...(body.status === "resolvida" || body.status === "encerrada" ? { closedAt: new Date() } : {}),
+  }).where(eq(demands.id, Number(id))).returning();
 
-export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  const { id } = await ctx.params;
-  const did = Number(id);
-  const d = await loadDemand(did);
-  if (!d) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
-  if (!canAccessRow(s, { coordinatorId: d.coordinatorId, createdBy: d.createdBy })) {
-    return NextResponse.json({ error: "sem permissão" }, { status: 403 });
-  }
-  await db.delete(demands).where(eq(demands.id, did));
-  await db.insert(auditLogs).values({
-    actorId: s.id, action: "demand_delete", entity: "demands", entityId: did,
-    ip: req.headers.get("x-forwarded-for"),
-  });
-  return NextResponse.json({ ok: true });
+  await logAudit({ actorId: session.id, action: "demand_updated", entity: "demands", entityId: updated.id, oldValue: existing.status, newValue: body.status, ip: req.headers.get("x-forwarded-for") });
+  return NextResponse.json({ demand: updated });
 }

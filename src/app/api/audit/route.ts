@@ -1,51 +1,70 @@
-import { NextResponse } from "next/server";
-import { desc, eq, sql } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { auditLogs, users } from "@/db/schema";
-import { getSession } from "@/lib/auth";
+import { auditLogs, users, voters, demands } from "@/db/schema";
+import { desc, count, eq, and, inArray, sql } from "drizzle-orm";
+import { getSessionFromRequest } from "@/lib/api-auth";
+import { isAdmin } from "@/lib/auth";
+import { ensureSetup } from "@/lib/setup";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export async function GET(req: NextRequest) {
+  const s = getSessionFromRequest(req);
+  if (!s || !isAdmin(s)) return NextResponse.json({ error: "Acesso restrito ao Super Admin." }, { status: 403 });
+  await ensureSetup();
 
-export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  if (s.role !== "super_admin") return NextResponse.json({ error: "sem permissão" }, { status: 403 });
+  const view = req.nextUrl.searchParams.get("view") ?? "logs";
 
-  const url = new URL(req.url);
-  const coordinatorFilter = url.searchParams.get("coordinatorId");
-  const q = url.searchParams.get("q")?.trim();
+  // VIEW: coordinators — mostra cada coordenador com totais
+  if (view === "coordinators") {
+    const coords = await db.select({
+      id: users.id, name: users.name, email: users.email,
+      phone: users.phone, territory: users.territory, active: users.active,
+    }).from(users).where(eq(users.role, "coordinator")).orderBy(desc(users.createdAt));
 
-  const rows = await db
-    .select({
-      id: auditLogs.id, action: auditLogs.action,
-      entity: auditLogs.entity, entityId: auditLogs.entityId,
-      detail: auditLogs.detail, ip: auditLogs.ip,
-      createdAt: auditLogs.createdAt,
-      actorId: auditLogs.actorId, actorName: users.name, actorEmail: users.email,
-      actorRole: users.role, actorCoordinatorId: users.coordinatorId,
-    })
-    .from(auditLogs)
-    .leftJoin(users, eq(auditLogs.actorId, users.id))
-    .where(sql`TRUE`)
-    .orderBy(desc(auditLogs.createdAt))
-    .limit(1000);
+    const result = [];
+    for (const c of coords) {
+      // Líderes deste coordenador
+      const leaders = await db.select({ id: users.id, name: users.name })
+        .from(users).where(and(eq(users.managerId, c.id), eq(users.role, "leader")));
+      const leaderIds = [c.id, ...leaders.map(l => l.id)];
 
-  let filtered = rows;
-  if (coordinatorFilter) {
-    const cid = Number(coordinatorFilter);
-    // Ações executadas pelo próprio coord (actorId=cid) OU por leaders vinculados (actorCoordinatorId=cid)
-    filtered = filtered.filter((r) => r.actorId === cid || r.actorCoordinatorId === cid);
+      // Eleitores registrados pelo coordenador e seus líderes
+      const [vc] = await db.select({ c: count() }).from(voters)
+        .where(inArray(voters.registeredById, leaderIds));
+
+      // Demandas criadas pelo coordenador e seus líderes
+      const [dc] = await db.select({ c: count() }).from(demands)
+        .where(inArray(demands.createdById, leaderIds));
+
+      result.push({
+        ...c, leaders: leaders.length, leadersNames: leaders.map(l => l.name),
+        voters: vc.c, demands: dc.c,
+      });
+    }
+    return NextResponse.json({ coordinators: result });
   }
-  if (q) {
-    const s = q.toLowerCase();
-    filtered = filtered.filter((r) =>
-      (r.action ?? "").toLowerCase().includes(s) ||
-      (r.entity ?? "").toLowerCase().includes(s) ||
-      (r.detail ?? "").toLowerCase().includes(s) ||
-      (r.actorName ?? "").toLowerCase().includes(s) ||
-      (r.actorEmail ?? "").toLowerCase().includes(s),
-    );
+
+  // VIEW: coordinator-detail — detalhes de um coordenador específico
+  if (view === "coordinator-detail") {
+    const coordId = Number(req.nextUrl.searchParams.get("coordId"));
+    if (!coordId) return NextResponse.json({ error: "coordId obrigatório." }, { status: 400 });
+
+    const leaders = await db.select({ id: users.id, name: users.name, email: users.email, phone: users.phone, active: users.active })
+      .from(users).where(and(eq(users.managerId, coordId), eq(users.role, "leader")));
+    const leaderIds = [coordId, ...leaders.map(l => l.id)];
+
+    const votersList = await db.select().from(voters)
+      .where(inArray(voters.registeredById, leaderIds)).orderBy(desc(voters.createdAt));
+
+    const demandsList = await db.select().from(demands)
+      .where(inArray(demands.createdById, leaderIds)).orderBy(desc(demands.createdAt));
+
+    return NextResponse.json({ leaders, voters: votersList, demands: demandsList });
   }
-  return NextResponse.json({ logs: filtered });
+
+  // VIEW: logs — trilha de auditoria padrão
+  const page = Math.max(1, Number(req.nextUrl.searchParams.get("page")) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 30));
+  const [total] = await db.select({ c: count() }).from(auditLogs);
+  const rows = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limit).offset((page - 1) * limit);
+  return NextResponse.json({ logs: rows, total: total.c, page, limit });
 }

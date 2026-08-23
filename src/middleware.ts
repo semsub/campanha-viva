@@ -1,36 +1,37 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export function middleware(req: NextRequest) {
+  const token = req.cookies.get("jac_session")?.value;
+  const { pathname } = req.nextUrl;
 
-  // Libera arquivos estáticos, favicon, assets e rotas de API/Auth
-  if (
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon.ico") ||
-    pathname.includes(".")
-  ) {
-    return NextResponse.next();
+  // Protect all /dashboard routes
+  if (pathname.startsWith("/dashboard")) {
+    if (!token) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+    // Basic token validation (check structure only, full validation in API)
+    const parts = token.split(".");
+    if (parts.length !== 2) {
+      const res = NextResponse.redirect(new URL("/login", req.url));
+      res.cookies.set("jac_session", "", { maxAge: 0, path: "/" });
+      return res;
+    }
   }
 
-  // O nome correto do cookie de sessão gerado em src/lib/auth.ts é 'jac_session'
-  const token = request.cookies.get("jac_session")?.value;
-  const isLoginPage = pathname === "/login";
-
-  // Se for a página de login e já tiver sessão ativa, manda para o app
-  if (isLoginPage && token) {
-    return NextResponse.redirect(new URL("/app", request.url));
+  // Redirect / to dashboard or login
+  if (pathname === "/") {
+    if (token) return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Se tentar acessar o painel (/app) sem token, manda para o login
-  if (!isLoginPage && !token && pathname.startsWith("/app")) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  // If logged in, redirect /login to /dashboard
+  if (pathname === "/login" && token) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/", "/login", "/dashboard/:path*"],
 };

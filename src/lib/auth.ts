@@ -1,25 +1,18 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
 
-// Se SESSION_SECRET não for definido, usa um valor derivado do DATABASE_URL
-// (permanece estável entre restarts enquanto o banco for o mesmo)
-const SECRET =
-  process.env.SESSION_SECRET ??
-  (process.env.DATABASE_URL
-    ? crypto.createHash("sha256").update(process.env.DATABASE_URL).digest("hex")
-    : "junior-araujo-coordenacao-secret-2026-static-fallback");
+const SECRET = process.env.SESSION_SECRET ?? "junior-araujo-coordenacao-2026";
+export const COOKIE_NAME = "jac_session";
+const TTL_HOURS = 12;
 
-const COOKIE = "jac_session";
-const TTL_HOURS = 8;
+export type UserRole = "super_admin" | "admin" | "coordinator" | "leader";
 
 export type SessionUser = {
   id: number;
   name: string;
   email: string;
-  role: "super_admin" | "coordinator" | "leader";
+  role: UserRole;
   territory: string | null;
-  coordinatorId: number | null; // para leader: id do coord dono; para coord: o próprio id
 };
 
 function sign(payload: string): string {
@@ -31,56 +24,71 @@ export function hashPassword(plain: string): string {
 }
 
 export function verifyPassword(plain: string, hash: string): boolean {
-  try {
-    return bcrypt.compareSync(plain, hash);
-  } catch {
-    return false;
-  }
+  return bcrypt.compareSync(plain, hash);
 }
 
-export async function createSession(user: SessionUser) {
+export function createToken(user: SessionUser): string {
   const exp = Date.now() + TTL_HOURS * 3600 * 1000;
   const payload = Buffer.from(JSON.stringify({ ...user, exp })).toString("base64url");
-  const token = `${payload}.${sign(payload)}`;
-  const store = await cookies();
-  const isProd = process.env.NODE_ENV === "production";
-  store.set(COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: isProd,
-    maxAge: TTL_HOURS * 3600,
-    path: "/",
-  });
+  return `${payload}.${sign(payload)}`;
+}
+
+export function verifyToken(token: string): SessionUser | null {
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [payload, sig] = parts;
+  if (!payload || !sig || sign(payload) !== sig) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as SessionUser & { exp: number };
+    if (data.exp < Date.now()) return null;
+    return { id: data.id, name: data.name, email: data.email, role: data.role, territory: data.territory };
+  } catch {
+    return null;
+  }
 }
 
 export async function getSession(): Promise<SessionUser | null> {
   try {
+    const { cookies } = await import("next/headers");
     const store = await cookies();
-    const token = store.get(COOKIE)?.value;
+    const token = store.get(COOKIE_NAME)?.value;
     if (!token) return null;
-    const idx = token.lastIndexOf(".");
-    if (idx < 0) return null;
-    const payload = token.slice(0, idx);
-    const sig = token.slice(idx + 1);
-    if (!payload || !sig || sign(payload) !== sig) return null;
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as SessionUser & {
-      exp: number;
-    };
-    if (data.exp < Date.now()) return null;
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      role: data.role,
-      territory: data.territory,
-      coordinatorId: data.coordinatorId ?? null,
-    };
+    return verifyToken(token);
   } catch {
     return null;
   }
 }
 
 export async function clearSession() {
-  const store = await cookies();
-  store.delete(COOKIE);
+  try {
+    const { cookies } = await import("next/headers");
+    const store = await cookies();
+    store.delete(COOKIE_NAME);
+  } catch { /* ok */ }
 }
+
+/* ============================================
+   HIERARQUIA DE PERMISSÕES
+   super_admin > admin > coordinator > leader
+   ============================================ */
+
+/** Super Admin — acesso total irrestrito */
+export function isSuperAdmin(s: SessionUser | null) { return s?.role === "super_admin"; }
+
+/** Admin ou superior — gestão operacional ampla */
+export function isAdmin(s: SessionUser | null) { return s?.role === "super_admin" || s?.role === "admin"; }
+
+/** Coordenador ou superior */
+export function isCoordinator(s: SessionUser | null) { return isAdmin(s) || s?.role === "coordinator"; }
+
+/** Líder ou superior */
+export function isLeader(s: SessionUser | null) { return isCoordinator(s) || s?.role === "leader"; }
+
+/** Pode gerenciar usuários: super_admin, admin, coordinator */
+export function canManageUsers(s: SessionUser | null) { return isCoordinator(s); }
+
+/** Pode cadastrar eleitores: todos exceto quem não está logado */
+export function canManageVoters(s: SessionUser | null) { return s !== null; }
+
+/** Pode criar/gerenciar demandas: todos logados */
+export function canManageDemands(s: SessionUser | null) { return s !== null; }

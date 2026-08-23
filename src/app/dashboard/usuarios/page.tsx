@@ -1,280 +1,137 @@
 "use client";
-
 import { useEffect, useState, useCallback } from "react";
-import { roleLabels, formatDate } from "@/lib/utils";
 
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  phone: string | null;
-  territory: string | null;
-  active: boolean | null;
-  createdAt: string;
-  lastLoginAt: string | null;
-}
+type User = { id: number; name: string; email: string; phone: string|null; role: string; active: boolean; territory: string|null; createdAt: string };
+const roleLabel: Record<string,string> = { super_admin:"Super Admin", admin:"Administrador", coordinator:"Coordenador", leader:"Liderança" };
+const roleColor: Record<string,string> = { super_admin:"bg-red-50 text-red-700", admin:"bg-purple-50 text-purple-700", coordinator:"bg-blue-50 text-blue-700", leader:"bg-green-50 text-green-700" };
 
-export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function UsuariosPage() {
+  const [list, setList] = useState<User[]>([]);
+  const [me, setMe] = useState<{ role: string }|null>(null);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [passwordMsg, setPasswordMsg] = useState("");
-  const [currentUserRole, setCurrentUserRole] = useState<string>("");
-  const [formData, setFormData] = useState({
-    name: "", email: "", password: "", role: "leader", phone: "", territory: "",
-  });
+  const [form, setForm] = useState({ name:"", email:"", phone:"", password:"", role:"leader", territory:"" });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [pwdId, setPwdId] = useState<number|null>(null);
+  const [newPwd, setNewPwd] = useState("");
 
-  const loadData = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    
-    const sessionRes = await fetch("/api/auth/session");
-    if (sessionRes.ok) {
-      const sessionData = await sessionRes.json();
-      if (sessionData?.user) {
-        setCurrentUserRole(sessionData.user.role);
-      }
-    }
-
-    const res = await fetch(`/api/users?${params}`);
-    const data = await res.json();
-    // Ajustado para aceitar tanto array puro quanto objeto com propriedade users
-    const userList = Array.isArray(data) ? data : (data.users || []);
-    setUsers(userList);
-    setLoading(false);
+    const res = await fetch(`/api/users?search=${encodeURIComponent(search)}`);
+    const d = await res.json(); setList(d.users??[]); setLoading(false);
   }, [search]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { load(); fetch("/api/auth/me").then(r=>r.json()).then(d=>setMe(d.user)); }, [load]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
-    if (res.ok) {
-      setShowForm(false);
-      setFormData({ name: "", email: "", password: "", role: "leader", phone: "", territory: "" });
-      loadData();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Erro ao criar usuário");
-    }
-  };
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true); setMsg("");
+    const res = await fetch("/api/users", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(form) });
+    const d = await res.json();
+    if (res.ok) { setMsg("✅ Usuário criado!"); setForm({ name:"",email:"",phone:"",password:"",role:"leader",territory:"" }); setShowForm(false); load(); }
+    else setMsg(`❌ ${d.error}`); setSaving(false);
+  }
 
-  const toggleActive = async (user: User) => {
-    const res = await fetch(`/api/users/${user.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !user.active }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      alert(data.error || "Erro ao atualizar status");
-    }
-    loadData();
-  };
+  async function toggleActive(u: User) {
+    await fetch(`/api/users/${u.id}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ active: !u.active }) }); load();
+  }
 
-  const handleDelete = async (user: User) => {
-    if (!confirm(`Tem certeza que deseja remover permanentemente o usuário ${user.name}?`)) return;
-    const res = await fetch(`/api/users/${user.id}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      loadData();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Erro ao remover usuário");
-    }
-  };
+  async function removeUser(u: User) {
+    if (!confirm(`Remover ${u.name}?`)) return;
+    await fetch(`/api/users/${u.id}`, { method:"DELETE" }); setMsg(`✅ ${u.name} removido.`); load();
+  }
 
-  const handleChangePassword = async () => {
-    if (!editingUser || !newPassword) return;
-    if (newPassword.length < 6) {
-      setPasswordMsg("A senha deve ter no mínimo 6 caracteres");
-      return;
-    }
-    const res = await fetch(`/api/users/${editingUser.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: newPassword }),
-    });
-    if (res.ok) {
-      setPasswordMsg("✅ Senha alterada com sucesso!");
-      setNewPassword("");
-      setTimeout(() => { setEditingUser(null); setPasswordMsg(""); }, 2000);
-      loadData();
-    } else {
-      const data = await res.json();
-      setPasswordMsg(`❌ ${data.error || "Erro ao alterar senha"}`);
-    }
-  };
+  async function resetPwd(uid: number) {
+    if (!newPwd || newPwd.length < 6) { setMsg("❌ Mínimo 6 caracteres."); return; }
+    const res = await fetch(`/api/users/${uid}`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ password: newPwd }) });
+    if (res.ok) { setMsg("✅ Senha alterada!"); setPwdId(null); setNewPwd(""); } else { const d = await res.json(); setMsg(`❌ ${d.error}`); }
+  }
+
+  // Roles que este usuário pode criar
+  const isSA = me?.role === "super_admin";
+  const isAdm = me?.role === "admin" || isSA;
+  const roleOptions: { v: string; l: string }[] = [];
+  if (isSA) roleOptions.push({ v:"admin", l:"Administrador" });
+  if (isAdm) roleOptions.push({ v:"coordinator", l:"Coordenador" });
+  roleOptions.push({ v:"leader", l:"Liderança" });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-brand-blue" style={{ fontFamily: "'Playfair Display', serif" }}>Usuários</h1>
-          <p className="text-sm text-gray-400">{users.length} registrados na sua rede</p>
+          <h1 className="text-2xl font-extrabold text-[#003B6F]">🛡️ Gestão de Usuários</h1>
+          <p className="text-sm text-[#6b7a8f]">
+            {isSA ? "Crie Admin, Coordenadores e Lideranças" : isAdm ? "Crie Coordenadores e Lideranças" : "Crie Lideranças"}
+          </p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="btn-primary">
-          {showForm ? "✕ Fechar" : "+ Novo Usuário"}
+        <button onClick={() => setShowForm(!showForm)} className="rounded-xl bg-gradient-to-r from-[#F07A1A] to-[#FF9A3A] px-6 py-3 text-sm font-bold text-white shadow-md hover:shadow-lg transition">
+          {showForm ? "✕ Cancelar" : "＋ Novo Usuário"}
         </button>
       </div>
 
+      <div className="mb-4 rounded-xl bg-[#003B6F]/5 border border-[#003B6F]/10 p-4 text-xs text-[#003B6F] space-y-1">
+        <p>🔺 <b>Hierarquia:</b> Super Admin → Administrador → Coordenador → Liderança → Eleitores</p>
+        <p>• Cada nível só gerencia quem está abaixo e que foi criado por ele.</p>
+        <p>• Coordenadores são isolados entre si — não veem dados de outros coordenadores.</p>
+      </div>
+
+      {msg && <div className={`mb-4 rounded-xl px-4 py-3 text-sm font-semibold ${msg.startsWith("✅")?"bg-green-50 text-green-700 border border-green-200":"bg-red-50 text-red-700 border border-red-200"}`}>{msg}</div>}
+
       {showForm && (
-        <div className="card">
-          <h3 className="text-base font-bold text-brand-blue mb-4 flex items-center gap-2">
-            <span className="w-1 h-5 rounded-full bg-brand-orange inline-block" />
-            Novo Usuário / Subordinado
-          </h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Nome *</label>
-                <input className="input-field" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">E-mail *</label>
-                <input type="email" className="input-field" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Senha *</label>
-                <input type="password" className="input-field" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required minLength={6} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Telefone</label>
-                <input className="input-field" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Território</label>
-                <input className="input-field" value={formData.territory} onChange={(e) => setFormData({ ...formData, territory: e.target.value })} placeholder="Ex: Zona Norte / Bairro" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Perfil *</label>
-                <select className="input-field" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}>
-                  {currentUserRole === "super_admin" && <option value="super_admin">Super Administrador</option>}
-                  <option value="coordinator">Coordenador</option>
-                  <option value="coordenador_regional">Coordenador Regional</option>
-                  <option value="leader">Liderança / Líder</option>
-                  <option value="lideranca">Liderança</option>
-                </select>
-              </div>
+        <form onSubmit={handleSubmit} className="mb-6 rounded-2xl border border-[#E2EAF3] bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-[#003B6F] mb-4">Criar Usuário</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#003B6F] mb-1">Nome *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required className="w-full rounded-xl border-2 border-[#E2EAF3] bg-[#F5F8FB] px-4 py-3 text-sm outline-none focus:border-[#F07A1A] focus:bg-white transition" /></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#003B6F] mb-1">E-mail *</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required className="w-full rounded-xl border-2 border-[#E2EAF3] bg-[#F5F8FB] px-4 py-3 text-sm outline-none focus:border-[#F07A1A] focus:bg-white transition" /></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#003B6F] mb-1">Telefone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="w-full rounded-xl border-2 border-[#E2EAF3] bg-[#F5F8FB] px-4 py-3 text-sm outline-none focus:border-[#F07A1A] focus:bg-white transition" /></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#003B6F] mb-1">Senha *</label><input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required minLength={6} className="w-full rounded-xl border-2 border-[#E2EAF3] bg-[#F5F8FB] px-4 py-3 text-sm outline-none focus:border-[#F07A1A] focus:bg-white transition" /></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#003B6F] mb-1">Perfil</label>
+              <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})} className="w-full rounded-xl border-2 border-[#E2EAF3] bg-[#F5F8FB] px-4 py-3 text-sm outline-none focus:border-[#F07A1A] transition">
+                {roleOptions.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
+              </select>
             </div>
-            <div className="flex gap-2">
-              <button type="submit" className="btn-primary">Salvar</button>
-              <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancelar</button>
-            </div>
-          </form>
-        </div>
+            <div><label className="block text-xs font-bold uppercase tracking-wider text-[#003B6F] mb-1">Território</label><input value={form.territory} onChange={e=>setForm({...form,territory:e.target.value})} placeholder="Região/Bairro" className="w-full rounded-xl border-2 border-[#E2EAF3] bg-[#F5F8FB] px-4 py-3 text-sm outline-none focus:border-[#F07A1A] focus:bg-white transition" /></div>
+          </div>
+          <button type="submit" disabled={saving} className="mt-4 rounded-xl bg-gradient-to-r from-[#003B6F] to-[#0B5FAA] px-8 py-3 text-sm font-bold text-white shadow-md disabled:opacity-50 transition">{saving?"Salvando...":"💾 Criar Usuário"}</button>
+        </form>
       )}
 
-      {editingUser && (
-        <div className="card border-2 border-brand-orange/30">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-bold text-brand-blue flex items-center gap-2">
-              <span className="w-1 h-5 rounded-full bg-brand-orange inline-block" />
-              Alterar Senha — {editingUser.name}
-            </h3>
-            <button onClick={() => { setEditingUser(null); setNewPassword(""); setPasswordMsg(""); }} className="text-gray-400 hover:text-gray-600 cursor-pointer text-lg">✕</button>
-          </div>
-          <div className="flex gap-3 items-end">
-            <div className="flex-1">
-              <label className="block text-xs font-semibold text-brand-blue/60 uppercase tracking-wider mb-1.5">Nova Senha</label>
-              <input
-                type="password"
-                className="input-field"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                minLength={6}
-              />
-            </div>
-            <button onClick={handleChangePassword} className="btn-primary whitespace-nowrap">
-              🔑 Alterar Senha
-            </button>
-          </div>
-          {passwordMsg && (
-            <p className={`mt-3 text-sm font-medium ${passwordMsg.includes("✅") ? "text-emerald-600" : "text-red-500"}`}>
-              {passwordMsg}
-            </p>
-          )}
-        </div>
-      )}
+      <div className="mb-4"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Pesquisar..." className="w-full max-w-md rounded-xl border-2 border-[#E2EAF3] bg-white px-4 py-3 text-sm outline-none focus:border-[#F07A1A] transition" /></div>
 
-      <div className="card">
-        <input className="input-field" placeholder="🔍 Buscar por nome ou email..." value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-
-      <div className="card overflow-hidden p-0">
+      <div className="rounded-2xl border border-[#E2EAF3] bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-brand-gray">
-              <tr>
-                <th className="table-header">Nome</th>
-                <th className="table-header">E-mail</th>
-                <th className="table-header">Perfil</th>
-                <th className="table-header">Telefone</th>
-                <th className="table-header">Território</th>
-                <th className="table-header">Status</th>
-                <th className="table-header">Último Acesso</th>
-                <th className="table-header">Ações</th>
+          <table className="w-full text-sm"><thead><tr className="border-b bg-[#F5F8FB]">
+            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[#003B6F]">Nome</th>
+            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[#003B6F] hidden md:table-cell">E-mail</th>
+            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[#003B6F]">Perfil</th>
+            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[#003B6F]">Status</th>
+            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[#003B6F]">Ações</th>
+          </tr></thead><tbody>
+            {loading ? <tr><td colSpan={5} className="px-4 py-12 text-center text-[#6b7a8f]">Carregando...</td></tr> :
+            list.length === 0 ? <tr><td colSpan={5} className="px-4 py-12 text-center text-[#6b7a8f]">Nenhum usuário.</td></tr> :
+            list.map(u => (
+              <tr key={u.id} className="border-b border-[#F5F8FB] hover:bg-[#F5F8FB] transition">
+                <td className="px-4 py-3 font-semibold text-[#003B6F]">{u.name}</td>
+                <td className="px-4 py-3 text-[#5B6E85] hidden md:table-cell">{u.email}</td>
+                <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${roleColor[u.role]??""}`}>{roleLabel[u.role]}</span></td>
+                <td className="px-4 py-3"><button onClick={()=>toggleActive(u)} className={`rounded-full px-2 py-1 text-xs font-bold cursor-pointer ${u.active?"bg-green-50 text-green-700":"bg-red-50 text-red-700"}`}>{u.active?"Ativo":"Inativo"}</button></td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {pwdId===u.id ? (<>
+                      <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="Nova senha" className="w-24 rounded-lg border px-2 py-1 text-xs" />
+                      <button onClick={()=>resetPwd(u.id)} className="rounded-lg bg-[#F07A1A] px-2 py-1 text-xs text-white font-bold">OK</button>
+                      <button onClick={()=>setPwdId(null)} className="text-xs text-gray-500">✕</button>
+                    </>) : (<>
+                      <button onClick={()=>{setPwdId(u.id);setNewPwd("")}} className="rounded-lg border border-[#E2EAF3] px-2 py-1 text-xs font-semibold text-[#003B6F] hover:bg-[#F5F8FB]">🔑</button>
+                      <button onClick={()=>removeUser(u)} className="rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">🗑️</button>
+                    </>)}
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {loading ? (
-                <tr><td colSpan={8} className="table-cell text-center text-gray-300">Carregando...</td></tr>
-              ) : users.length === 0 ? (
-                <tr><td colSpan={8} className="table-cell text-center text-gray-300">Nenhum usuário encontrado</td></tr>
-              ) : (
-                users.map((u) => (
-                  <tr key={u.id} className="hover:bg-brand-cream/50 transition-colors">
-                    <td className="table-cell font-semibold text-brand-blue">{u.name}</td>
-                    <td className="table-cell text-gray-500">{u.email}</td>
-                    <td className="table-cell">
-                      <span className="badge bg-brand-blue/10 text-brand-blue">{roleLabels[u.role] || u.role}</span>
-                    </td>
-                    <td className="table-cell text-gray-500">{u.phone || "-"}</td>
-                    <td className="table-cell text-gray-500">{u.territory || "-"}</td>
-                    <td className="table-cell">
-                      <span className={`badge ${u.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
-                        {u.active ? "● Ativo" : "● Inativo"}
-                      </span>
-                    </td>
-                    <td className="table-cell text-xs text-gray-400">{u.lastLoginAt ? formatDate(u.lastLoginAt) : "Nunca"}</td>
-                    <td className="table-cell">
-                      <div className="flex gap-3 items-center">
-                        <button onClick={() => toggleActive(u)} className={`text-xs font-semibold cursor-pointer ${u.active ? "text-red-500 hover:text-red-700" : "text-emerald-600 hover:text-emerald-800"}`}>
-                          {u.active ? "Desativar" : "Ativar"}
-                        </button>
-                        <button onClick={() => { setEditingUser(u); setNewPassword(""); setPasswordMsg(""); }} className="text-xs font-semibold text-brand-orange hover:text-brand-orange-light cursor-pointer">
-                          🔑 Senha
-                        </button>
-                        {currentUserRole === "super_admin" && (
-                          <button onClick={() => handleDelete(u)} className="text-xs font-semibold text-red-700 hover:text-red-900 cursor-pointer">
-                            🗑️ Remover
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+            ))}
+          </tbody></table>
         </div>
-      </div>
-
-      <div className="text-center pt-2">
-        <p className="text-[10px] text-gray-300">
-          Desenvolvido por <span className="font-semibold text-gray-400">Júnior Araújo Sistemas</span>
-        </p>
       </div>
     </div>
   );

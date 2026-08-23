@@ -1,9 +1,8 @@
-import { clearSession } from "@/lib/auth";
-
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+import { NextResponse } from "next/server";
+import { COOKIE_NAME } from "@/lib/auth";
 
 export async function POST() {
-  await clearSession();
-  return Response.json({ ok: true });
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set(COOKIE_NAME, "", { maxAge: 0, path: "/" });
+  return res;
 }

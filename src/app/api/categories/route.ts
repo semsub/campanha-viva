@@ -1,44 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { demandCategories } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
-import { getSession } from "@/lib/auth"; // Ajuste o caminho se necessário conforme o seu projeto
+import { eq, asc } from "drizzle-orm";
+import { getSessionFromRequest } from "@/lib/api-auth";
+import { isAdmin } from "@/lib/auth";
+import { ensureSetup } from "@/lib/setup";
 
-export async function GET(request: Request) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
+export async function GET(req: NextRequest) {
+  const session = getSessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  await ensureSetup();
+  const rows = await db.select().from(demandCategories).where(eq(demandCategories.active, true)).orderBy(asc(demandCategories.sortOrder));
+  return NextResponse.json({ categories: rows });
+}
 
-    const { searchParams } = new URL(request.url);
-    const parentIdParam = searchParams.get("parentId");
-
-    const conditions = [];
-    
-    // Tratamento seguro para campaignId caso exista na sessão
-    const sessionCampaignId = (session as any).campaignId;
-    if (sessionCampaignId) {
-      conditions.push(eq(demandCategories.campaignId, sessionCampaignId));
-    }
-
-    if (parentIdParam === "null" || parentIdParam === "0") {
-      conditions.push(isNull(demandCategories.parentId));
-    } else if (parentIdParam) {
-      conditions.push(eq(demandCategories.parentId, parseInt(parentIdParam, 10)));
-    }
-
-    const categories = await db
-      .select()
-      .from(demandCategories)
-      .where(conditions.length > 0 ? and(...conditions) : undefined);
-
-    return NextResponse.json(categories);
-  } catch (error: any) {
-    console.error("Erro ao buscar categorias:", error);
-    return NextResponse.json(
-      { error: "Erro interno ao buscar categorias." },
-      { status: 500 }
-    );
-  }
+export async function POST(req: NextRequest) {
+  const session = getSessionFromRequest(req);
+  if (!session || !isAdmin(session)) return NextResponse.json({ error: "Acesso restrito." }, { status: 403 });
+  await ensureSetup();
+  const body = await req.json();
+  if (!body.name) return NextResponse.json({ error: "Nome obrigatório." }, { status: 400 });
+  const [created] = await db.insert(demandCategories).values({ name: body.name, parentId: body.parentId, icon: body.icon, color: body.color, sortOrder: body.sortOrder }).returning();
+  return NextResponse.json({ category: created }, { status: 201 });
 }

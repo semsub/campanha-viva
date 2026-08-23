@@ -1,64 +1,34 @@
-import { NextResponse } from "next/server";
-import { and, count, eq, sql } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { users, voters, demands, tasks, events } from "@/db/schema";
-import { getSession } from "@/lib/auth";
-import { demandsVisibilityFilter, usersVisibilityFilter, votersVisibilityFilter } from "@/lib/scope";
+import { voters, demands, demandCategories, tasks, events, leaderships, neighborhoods, regions, users } from "@/db/schema";
+import { count, desc, eq } from "drizzle-orm";
+import { getSessionFromRequest } from "@/lib/api-auth";
+import { ensureSetup } from "@/lib/setup";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export async function GET(req: NextRequest) {
+  const session = getSessionFromRequest(req);
+  if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
-export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  try {
+    await ensureSetup();
+    const [voterCount] = await db.select({ c: count() }).from(voters);
+    const [demandCount] = await db.select({ c: count() }).from(demands);
+    const [taskCount] = await db.select({ c: count() }).from(tasks);
+    const [eventCount] = await db.select({ c: count() }).from(events);
+    const [leaderCount] = await db.select({ c: count() }).from(leaderships);
+    const [regionCount] = await db.select({ c: count() }).from(regions);
+    const [neighborhoodCount] = await db.select({ c: count() }).from(neighborhoods);
+    const [coordCount] = await db.select({ c: count() }).from(users).where(eq(users.role, "coordinator"));
 
-  const uf = usersVisibilityFilter(s);
-  const vf = votersVisibilityFilter(s);
-  const df = demandsVisibilityFilter(s);
+    const demandsByStatus = await db.select({ status: demands.status, c: count() }).from(demands).groupBy(demands.status);
+    const demandsByCategory = await db.select({ categoryId: demands.categoryId, c: count() }).from(demands).groupBy(demands.categoryId).orderBy(desc(count())).limit(10);
 
-  const [usersCount] = await db.select({ n: count() }).from(users).where(uf);
-  const [votersCount] = await db.select({ n: count() }).from(voters).where(vf);
-  const [demandsCount] = await db.select({ n: count() }).from(demands).where(df);
-  const [openDemands] = await db.select({ n: count() }).from(demands).where(and(df, eq(demands.status, "aberta"))!);
-  const [resolvedDemands] = await db.select({ n: count() }).from(demands).where(and(df, eq(demands.status, "resolvida"))!);
-  const [tasksCount] = await db.select({ n: count() }).from(tasks).where(
-    s.role === "super_admin" ? sql`TRUE` : eq(tasks.createdBy, s.id),
-  );
-  const [openTasks] = await db.select({ n: count() }).from(tasks).where(
-    and(
-      s.role === "super_admin" ? sql`TRUE` : eq(tasks.createdBy, s.id),
-      eq(tasks.status, "pendente"),
-    )!,
-  );
-  const [eventsCount] = await db.select({ n: count() }).from(events).where(
-    s.role === "super_admin" ? sql`TRUE` : eq(events.createdBy, s.id),
-  );
-
-  const roleBreakdown = await db
-    .select({ role: users.role, n: count() })
-    .from(users)
-    .where(uf)
-    .groupBy(users.role);
-
-  const byCategory = await db
-    .select({ category: demands.category, n: count() })
-    .from(demands)
-    .where(df)
-    .groupBy(demands.category)
-    .orderBy(sql`count(*) DESC`);
-
-  const byStatus = await db
-    .select({ status: demands.status, n: count() })
-    .from(demands)
-    .where(df)
-    .groupBy(demands.status);
-
-  return NextResponse.json({
-    stats: {
-      users: usersCount.n, voters: votersCount.n,
-      demands: demandsCount.n, openDemands: openDemands.n, resolvedDemands: resolvedDemands.n,
-      tasks: tasksCount.n, openTasks: openTasks.n, events: eventsCount.n,
-    },
-    roleBreakdown, byCategory, byStatus,
-  });
+    return NextResponse.json({
+      voters: voterCount.c, demands: demandCount.c, tasks: taskCount.c, events: eventCount.c,
+      leaderships: leaderCount.c, regions: regionCount.c, neighborhoods: neighborhoodCount.c,
+      coordinators: coordCount.c, demandsByStatus, demandsByCategory,
+    });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Erro" }, { status: 500 });
+  }
 }
