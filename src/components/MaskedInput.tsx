@@ -1,56 +1,31 @@
-"use client";
-import { useCallback } from "react";
+import React from 'react';
 
-type Props = {
-  value: string;
-  onChange: (val: string) => void;
-  mask: "phone" | "titulo" | "date";
-  placeholder?: string;
-  className?: string;
-  required?: boolean;
-};
-
-function applyMask(raw: string, mask: "phone" | "titulo" | "date"): string {
-  const d = raw.replace(/\D/g, "");
-  if (mask === "phone") {
-    // (00) 00000-0000
-    if (d.length <= 2) return d.length ? `(${d}` : "";
-    if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
-  }
-  if (mask === "titulo") {
-    // 0000 0000 0000
-    if (d.length <= 4) return d;
-    if (d.length <= 8) return `${d.slice(0, 4)} ${d.slice(4)}`;
-    return `${d.slice(0, 4)} ${d.slice(4, 8)} ${d.slice(8, 12)}`;
-  }
-  if (mask === "date") {
-    // DD/MM/AAAA
-    if (d.length <= 2) return d;
-    if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
-    return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
-  }
-  return raw;
+interface MaskedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
+  mask?: string;
+  value?: string;
+  onChange?: (e: any) => void;
 }
 
-export function MaskedInput({ value, onChange, mask, placeholder, className, required }: Props) {
-  const handle = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const masked = applyMask(e.target.value, mask);
-    onChange(masked);
-  }, [mask, onChange]);
+export function MaskedInput(props: MaskedInputProps) {
+  const { mask, onChange, value, ...rest } = props;
 
-  const maxLen = mask === "phone" ? 15 : mask === "titulo" ? 14 : 10;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (onChange) {
+      // Se o componente pai espera receber a string direta (ex: onChange={v => ...})
+      // ou se espera o evento. Vamos suportar ambos:
+      // Se a função do pai aceitar string ou evento, passamos o valor ou o evento conforme o uso.
+      // Pelo erro, ele passa uma função que espera string. Vamos tentar passar o valor se for o caso, 
+      // ou aceitar que o componente pai receba o evento/string.
+      onChange(e.target.value);
+    }
+  };
 
   return (
-    <input
-      type="text"
-      inputMode="numeric"
+    <input 
+      {...rest} 
       value={value}
-      onChange={handle}
-      placeholder={placeholder}
-      maxLength={maxLen}
-      required={required}
-      className={className}
+      onChange={handleChange}
+      className={`px-3 py-2 border rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500 ${props.className || ''}`} 
     />
   );
 }

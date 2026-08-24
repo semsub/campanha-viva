@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/init/env tsx
 /**
  * Script de inicialização do banco de dados
  * Executar: npx tsx scripts/seed.ts
@@ -47,8 +47,6 @@ async function main() {
     console.log(" Criando campanha...");
     const [campaign] = await db.insert(campaigns).values({
       name: "Campanha Principal 2024",
-      description: "Campanha de gestão territorial",
-      state: "PA",
     }).returning();
     console.log("   ✓ Campanha criada (ID:", campaign.id, ")");
 
@@ -71,36 +69,35 @@ async function main() {
     const [mun1] = await db.insert(municipalities).values({
       name: "Salinópolis",
       state: "PA",
-      campaignId: campaign.id,
     }).returning();
     console.log("   ✓ Salinópolis/PA criado");
 
     // 4. Criar regiões
     console.log("\n📍 Criando regiões...");
-    const [reg1] = await db.insert(regions).values({ name: "Zona Leste", municipalityId: mun1.id, campaignId: campaign.id }).returning();
-    const [reg2] = await db.insert(regions).values({ name: "Zona Sul", municipalityId: mun1.id, campaignId: campaign.id }).returning();
-    const [reg3] = await db.insert(regions).values({ name: "Zona Norte", municipalityId: mun1.id, campaignId: campaign.id }).returning();
+    const [reg1] = await db.insert(regions).values({ name: "Zona Leste", municipalityId: mun1.id }).returning();
+    const [reg2] = await db.insert(regions).values({ name: "Zona Sul", municipalityId: mun1.id }).returning();
+    const [reg3] = await db.insert(regions).values({ name: "Zona Norte", municipalityId: mun1.id }).returning();
     console.log("   ✓ 3 regiões criadas");
 
     // 5. Criar bairros
     console.log("\n🏘️  Criando bairros...");
     await db.insert(neighborhoods).values([
-      { name: "Itaquera", regionId: reg1.id, municipalityId: mun1.id, campaignId: campaign.id },
-      { name: "São Mateus", regionId: reg1.id, municipalityId: mun1.id, campaignId: campaign.id },
-      { name: "Guaianases", regionId: reg1.id, municipalityId: mun1.id, campaignId: campaign.id },
-      { name: "Grajaú", regionId: reg2.id, municipalityId: mun1.id, campaignId: campaign.id },
-      { name: "Capão Redondo", regionId: reg2.id, municipalityId: mun1.id, campaignId: campaign.id },
-      { name: "Santana", regionId: reg3.id, municipalityId: mun1.id, campaignId: campaign.id },
-      { name: "Tucuruvi", regionId: reg3.id, municipalityId: mun1.id, campaignId: campaign.id },
+      { name: "Itaquera", regionId: reg1.id, municipalityId: mun1.id },
+      { name: "São Mateus", regionId: reg1.id, municipalityId: mun1.id },
+      { name: "Guaianases", regionId: reg1.id, municipalityId: mun1.id },
+      { name: "Grajaú", regionId: reg2.id, municipalityId: mun1.id },
+      { name: "Capão Redondo", regionId: reg2.id, municipalityId: mun1.id },
+      { name: "Santana", regionId: reg3.id, municipalityId: mun1.id },
+      { name: "Tucuruvi", regionId: reg3.id, municipalityId: mun1.id },
     ]);
     console.log("   ✓ 7 bairros criados");
 
     // 6. Criar zonas eleitorais
     console.log("\n️  Criando zonas eleitorais...");
     await db.insert(electoralZones).values([
-      { number: "001", municipalityId: mun1.id, campaignId: campaign.id },
-      { number: "002", municipalityId: mun1.id, campaignId: campaign.id },
-      { number: "003", municipalityId: mun1.id, campaignId: campaign.id },
+      { zone: "001", municipalityId: mun1.id },
+      { zone: "002", municipalityId: mun1.id },
+      { zone: "003", municipalityId: mun1.id },
     ]);
     console.log("   ✓ 3 zonas eleitorais criadas");
 
@@ -109,7 +106,7 @@ async function main() {
     
     const createCategory = async (name: string, parentId: number | null, icon: string, color: string, order: number) => {
       const [cat] = await db.insert(demandCategories).values({
-        name, parentId, icon, color, campaignId: campaign.id, sortOrder: order, active: true,
+        name, parentId, icon, color, sortOrder: order, active: true,
       }).returning();
       return cat;
     };
@@ -170,7 +167,7 @@ async function main() {
       passwordHash: coordHash,
       role: "coordinator",
       campaignId: campaign.id,
-      parentUserId: superAdmin.id,
+      managerId: superAdmin.id,
     });
     console.log("   ✓ Coordenador criado");
     console.log("   📧 Email: coord@sistema.com");
@@ -185,7 +182,7 @@ async function main() {
       passwordHash: liderHash,
       role: "leader",
       campaignId: campaign.id,
-      parentUserId: superAdmin.id,
+      managerId: superAdmin.id,
     });
     console.log("   ✓ Liderança criada");
     console.log("   📧 Email: lider@sistema.com");
@@ -199,7 +196,7 @@ async function main() {
     console.log("Coordenador:  coord@sistema.com  /  coord123");
     console.log("Liderança:    lider@sistema.com  /  lider123");
     console.log("═══════════════════════════════════════════════════");
-    console.log("\n️  ALTERE AS SENHAS APÓS O PRIMEIRO ACESSO!\n");
+    console.log("\n⚠️  ALTERE AS SENHAS APÓS O PRIMEIRO ACESSO!\n");
 
   } catch (error) {
     console.error(" Erro durante o seed:", error);

@@ -1,21 +1,19 @@
-"use client";
-import { LOGO_DATA_URI } from "@/lib/logo-data";
+import React from 'react';
 
-export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const dims = { sm: 70, md: 140, lg: 240 };
-  const w = dims[size];
+interface LogoProps {
+  size?: 'sm' | 'md' | 'lg' | string;
+  className?: string;
+}
 
+export function Logo({ size = 'md', className = '' }: LogoProps) {
+  const sizeClasses = size === 'lg' ? 'w-12 h-12 text-2xl' : size === 'sm' ? 'w-6 h-6 text-sm' : 'w-8 h-8 text-base';
+  
   return (
-    <div className="flex flex-col items-center select-none">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={LOGO_DATA_URI}
-        alt="Júnior Araújo Coordenação"
-        width={w}
-        height={w}
-        style={{ width: w, height: "auto" }}
-        draggable={false}
-      />
+    <div className={`flex items-center gap-2 ${className}`}>
+      <div className={`${sizeClasses} bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold`}>
+        C
+      </div>
+      <span className="font-bold text-xl text-gray-900 tracking-tight">Coordenação</span>
     </div>
   );
 }

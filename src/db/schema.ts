@@ -85,6 +85,14 @@ export const neighborhoods = pgTable("neighborhoods", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const electoralZones = pgTable("electoral_zones", {
+  id: serial("id").primaryKey(),
+  zone: text("zone").notNull(),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 /* ================================================================
    USUÁRIOS (Super Admin / Coordenador / Liderança)
    ================================================================ */

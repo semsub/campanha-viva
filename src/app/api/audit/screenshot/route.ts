@@ -1,22 +1,26 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
-export async function POST(req: NextRequest) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ ok: false }, { status: 200 });
+export async function POST(req: Request) {
   try {
+    const s = await getSession();
+    if (!s) return NextResponse.json({ ok: false }, { status: 200 });
+
+    const ip = req.headers.get("x-forwarded-for") || "unknown";
+
     await db.insert(auditLogs).values({
-      actorId: s.id, userId: s.id,
+      actorId: s.id,
+      userId: s.id,
       action: "screenshot_attempt",
       entity: "session",
-      detail: `Usuário ${s.email} tentou capturar/imprimir a tela`,
-      ip: req.headers.get("x-forwarded-for"),
+      ip: ip,
     });
-  } catch { /* silencia */ }
-  return NextResponse.json({ ok: true });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Erro ao registrar tentativa de screenshot:", error);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
 }
