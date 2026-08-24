@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | string;
@@ -6,16 +7,18 @@ interface LogoProps {
 }
 
 export function Logo({ size = 'md', className = '' }: LogoProps) {
-  const sizeClasses = size === 'lg' ? 'w-16 h-16 text-3xl' : size === 'sm' ? 'w-8 h-8 text-sm' : 'w-12 h-12 text-xl';
+  const sizeClasses = size === 'lg' ? 'w-24 h-24' : size === 'sm' ? 'w-10 h-10' : 'w-16 h-16';
   
   return (
     <div className={`flex items-center gap-3 ${className}`}>
-      <div className={`${sizeClasses} bg-gradient-to-tr from-blue-700 to-orange-500 rounded-2xl flex items-center justify-center text-white font-black shadow-lg border border-white/20`}>
-        C
-      </div>
-      <div className="flex flex-col">
-        <span className="font-extrabold text-xl text-gray-900 tracking-tight leading-tight">Coordenação</span>
-        <span className="text-xs text-orange-600 font-semibold tracking-wide uppercase">Campanha Viva</span>
+      <div className={`relative ${sizeClasses} flex items-center justify-center`}>
+        <Image 
+          src="/logo.png" 
+          alt="Júnior Araújo Coordenação" 
+          fill 
+          className="object-contain drop-shadow-md"
+          priority
+        />
       </div>
     </div>
   );
