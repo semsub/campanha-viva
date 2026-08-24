@@ -8,7 +8,6 @@ export async function POST(request: Request) {
       ssl: { rejectUnauthorized: false }
     });
 
-    // Garante a criação da coluna protocol caso esteja faltando na tabela de auditoria ou logs
     await pool.query(`
       ALTER TABLE IF EXISTS "AuditLog" ADD COLUMN IF NOT EXISTS "protocol" TEXT;
       ALTER TABLE IF EXISTS "audit_logs" ADD COLUMN IF NOT EXISTS "protocol" TEXT;
