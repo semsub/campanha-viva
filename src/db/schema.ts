@@ -1,4 +1,5 @@
 import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { Role } from "@/lib/permissions";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -6,7 +7,7 @@ export const users = pgTable("users", {
   password: text("password"),
   passwordHash: text("password_hash"),
   name: text("name").notNull(),
-  role: text("role").$type<string>().notNull().default("USER"),
+  role: text("role").$type<Role>().notNull().default("leader"),
   campaignId: integer("campaign_id"),
   managerId: integer("manager_id"),
   coordinatorId: integer("coordinator_id"),

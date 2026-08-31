@@ -4,7 +4,7 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canCreateRole, Role } from "@/lib/permissions";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export async function GET(req: Request) {
   const session = await getSession();
@@ -40,8 +40,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Nome e e-mail são obrigatórios" }, { status: 400 });
   }
 
-  const role = b.role ?? "leader";
-  if (!canCreateRole(s.role as Role, role as Role)) {
+  const role = (b.role ?? "leader") as Role;
+  if (!canCreateRole(s.role as Role, role)) {
     return NextResponse.json(
       { error: `Sem permissão: seu perfil (${s.role}) não pode criar ${role}.` },
       { status: 403 },
