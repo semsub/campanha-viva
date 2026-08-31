@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq, or, ilike } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canCreateRole, Role } from "@/lib/permissions";
 import bcrypt from "bcrypt";
@@ -16,9 +16,7 @@ export async function GET(req: Request) {
   const search = searchParams.get("search");
   const roleFilter = searchParams.get("role");
 
-  const query = db.select().from(users);
-  
-  const allUsers = await query;
+  const allUsers = await db.select().from(users);
   
   let filtered = allUsers;
   if (search) {
@@ -55,7 +53,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "E-mail já cadastrado" }, { status: 400 });
   }
 
-  const tempPassword = b.password || Math.random().toString(36.slice(-8));
+  const tempPassword = b.password || Math.random().toString(36).slice(-8);
   const passwordHash = await bcrypt.hash(tempPassword, 10);
 
   const [created] = await db.insert(users).values({
