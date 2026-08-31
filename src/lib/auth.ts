@@ -19,6 +19,15 @@ export function verifyToken(token: string): SessionUser | null {
   }
 }
 
+export function createSession(user: SessionUser): string {
+  return jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
+}
+
+export async function clearSession() {
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_NAME, "", { maxAge: 0 });
+}
+
 export async function getSession(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
@@ -32,4 +41,8 @@ export function isAdmin(user: SessionUser | null): boolean {
 
 export function verifyPassword(password: string, hash: string): boolean {
   return password === hash;
+}
+
+export function hashPassword(password: string): string {
+  return password;
 }
