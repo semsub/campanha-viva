@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -56,6 +56,11 @@ export const auditLogs = pgTable("audit_logs", {
 export const demandCategories = pgTable("demand_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  parentId: integer("parent_id"),
+  icon: text("icon"),
+  color: text("color"),
+  sortOrder: integer("sort_order"),
+  active: boolean("active").default(true),
 });
 
 export const municipalities = pgTable("municipalities", {
