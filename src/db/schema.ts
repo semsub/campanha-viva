@@ -24,6 +24,7 @@ export const voters = pgTable("voters", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   phone: text("phone"),
+  campaignId: integer("campaign_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -32,20 +33,33 @@ export const demands = pgTable("demands", {
   title: text("title").notNull(),
   description: text("description"),
   status: text("status").default("PENDING").notNull(),
+  priority: text("priority").default("NORMAL"),
+  category: text("category"),
+  campaignId: integer("campaign_id"),
+  createdBy: integer("created_by"),
+  assignedTo: integer("assigned_to"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
+  description: text("description"),
   status: text("status").default("PENDING").notNull(),
+  priority: text("priority").default("NORMAL"),
+  campaignId: integer("campaign_id"),
+  createdBy: integer("created_by"),
+  assignedTo: integer("assigned_to"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
+  description: text("description"),
   date: timestamp("date").notNull(),
+  campaignId: integer("campaign_id"),
+  createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
