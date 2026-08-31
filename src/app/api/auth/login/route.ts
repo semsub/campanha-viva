@@ -1,57 +1,70 @@
-import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, auditLogs } from "@/db/schema";
-import { verifyPassword, createSession } from "@/lib/auth";
+import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+async function verifyPassword(plain: string, hashed: string | null): Promise<boolean> {
+  if (!hashed) return false;
+  return bcrypt.compare(plain, hashed);
+}
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { email, password } = (await req.json()) as { email?: string; password?: string };
+    const body = await req.json();
+    const { email, password } = body;
+
     if (!email || !password) {
-      return Response.json({ error: "Informe e-mail e senha." }, { status: 400 });
+      return NextResponse.json({ error: "E-mail e senha são obrigatórios." }, { status: 400 });
     }
 
-    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase().trim()));
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const ip = req.headers.get("x-forwarded-for") ?? null;
 
-    if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
+    const isValidPassword = user ? await verifyPassword(password, user.passwordHash) : false;
+
+    if (!user || !user.active || !isValidPassword) {
       try {
         if (user) {
           await db.insert(auditLogs).values({
-            userId: user.id, action: "login_failed", entity: "users", entityId: user.id, ip,
+            actorId: user.id,
+            userId: user.id,
+            action: "login_failed",
+            entity: "auth",
+            ip,
+            detail: "Tentativa de login falhou",
           });
         }
-      } catch { /* não bloqueia retorno */ }
-      return Response.json({ error: "Credenciais inválidas ou usuário inativo." }, { status: 401 });
+      } catch (logErr) {
+        console.error("Erro ao registrar log de auditoria:", logErr);
+      }
+
+      return NextResponse.json({ error: "Credenciais inválidas." }, { status: 401 });
     }
-
-    // Para coord: coordinatorId = ele mesmo; para leader: valor da coluna; para super: null
-    const coordinatorId =
-      user.role === "coordinator" ? user.id :
-      user.role === "leader" ? (user.coordinatorId ?? null) : null;
-
-    await createSession({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      territory: user.territory,
-      coordinatorId,
-    });
 
     try {
       await db.insert(auditLogs).values({
-        userId: user.id, action: "login_success", entity: "users", entityId: user.id, ip,
+        actorId: user.id,
+        userId: user.id,
+        action: "login_success",
+        entity: "auth",
+        ip,
+        detail: "Login realizado com sucesso",
       });
-    } catch { /* não bloqueia login */ }
+    } catch (logErr) {
+      console.error("Erro ao registrar log de auditoria:", logErr);
+    }
 
-    return Response.json({ ok: true, role: user.role, name: user.name });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("login error:", msg);
-    return Response.json({ error: `Falha no servidor: ${msg}` }, { status: 500 });
+    return NextResponse.json({ 
+      success: true, 
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        role: user.role 
+      } 
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Erro interno no servidor." }, { status: 500 });
   }
 }
