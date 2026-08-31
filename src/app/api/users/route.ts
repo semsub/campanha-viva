@@ -1,101 +1,77 @@
-import { NextRequest, NextResponse } from "next/server";
-import { and, desc, ilike, or } from "drizzle-orm";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { users, auditLogs } from "@/db/schema";
-import { getSession, hashPassword } from "@/lib/auth";
-import { usersVisibilityFilter } from "@/lib/scope";
-import { canCreateRole } from "@/lib/permissions";
+import { users } from "@/db/schema";
+import { eq, or, ilike } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
+import { canCreateRole, Role } from "@/lib/permissions";
+import bcrypt from "bcrypt";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export async function GET(req: Request) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "não autorizado" }, { status: 401 });
+  }
 
-export async function GET(req: NextRequest) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const { searchParams } = new URL(req.url);
+  const search = searchParams.get("search");
+  const roleFilter = searchParams.get("role");
 
-  const q = new URL(req.url).searchParams.get("q")?.trim();
-  const filter = usersVisibilityFilter(s);
-  const where = q
-    ? and(filter, or(ilike(users.name, `%${q}%`), ilike(users.email, `%${q}%`)))!
-    : filter;
+  const query = db.select().from(users);
+  
+  const allUsers = await query;
+  
+  let filtered = allUsers;
+  if (search) {
+    filtered = filtered.filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
+  }
+  if (roleFilter) {
+    filtered = filtered.filter(u => u.role === roleFilter);
+  }
 
-  const rows = await db
-    .select({
-      id: users.id, name: users.name, email: users.email, phone: users.phone,
-      role: users.role, territory: users.territory, active: users.active,
-      managerId: users.managerId, coordinatorId: users.coordinatorId,
-      createdAt: users.createdAt,
-    })
-    .from(users)
-    .where(where)
-    .orderBy(desc(users.createdAt));
-  return NextResponse.json({ users: rows });
+  return NextResponse.json({ users: filtered });
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   const s = await getSession();
-  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  if (!s) {
+    return NextResponse.json({ error: "não autorizado" }, { status: 401 });
+  }
 
-  const b = (await req.json()) as {
-    name?: string; email?: string; phone?: string;
-    password?: string; role?: "super_admin" | "admin" | "coordinator" | "leader";
-    territory?: string;
-  };
-  if (!b.name || !b.email || !b.password) {
-    return NextResponse.json({ error: "nome, email e senha são obrigatórios" }, { status: 400 });
+  const b = await req.json();
+  if (!b.name || !b.email) {
+    return NextResponse.json({ error: "Nome e e-mail são obrigatórios" }, { status: 400 });
   }
-  if (b.password.length < 6) {
-    return NextResponse.json({ error: "a senha deve ter ao menos 6 caracteres" }, { status: 400 });
-  }
+
   const role = b.role ?? "leader";
-  if (!canCreateRole(s.role, role)) {
+  if (!canCreateRole(s.role as Role, role as Role)) {
     return NextResponse.json(
       { error: `Sem permissão: seu perfil (${s.role}) não pode criar ${role}.` },
       { status: 403 },
     );
   }
 
-  // Vinculação hierárquica:
-  // - super/admin criando coordinator → managerId = quem criou, coordinatorId = null
-  // - super/admin criando leader (opcional coordinatorId no body) → fica sob aquele coord
-  // - coordinator criando leader → coordinatorId = s.id, managerId = s.id
-  const bAny = b as { coordinatorId?: number };
-  let managerId: number | null = s.id;
-  let coordinatorId: number | null = null;
-  if (role === "leader") {
-    if (s.role === "coordinator") coordinatorId = s.id;
-    else if (bAny.coordinatorId) coordinatorId = Number(bAny.coordinatorId);
-  }
-  if (role === "coordinator" || role === "admin" || role === "super_admin") {
-    managerId = s.id;
-    coordinatorId = null;
+  const [existing] = await db.select().from(users).where(eq(users.email, b.email));
+  if (existing) {
+    return NextResponse.json({ error: "E-mail já cadastrado" }, { status: 400 });
   }
 
-  try {
-    const [row] = await db
-      .insert(users)
-      .values({
-        name: b.name.trim(),
-        email: b.email.toLowerCase().trim(),
-        phone: b.phone ?? null,
-        passwordHash: hashPassword(b.password),
-        role,
-        territory: b.territory ?? null,
-        managerId,
-        coordinatorId,
-      })
-      .returning({ id: users.id });
-    await db.insert(auditLogs).values({
-      actorId: s.id, userId: row.id, action: "user_create",
-      entity: "users", entityId: row.id,
-      detail: `Criou ${role} ${b.email}`, ip: req.headers.get("x-forwarded-for"),
-    });
-    return NextResponse.json({ ok: true, id: row.id });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("users_email_unique")) {
-      return NextResponse.json({ error: "email já cadastrado" }, { status: 409 });
-    }
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+  const tempPassword = b.password || Math.random().toString(36.slice(-8));
+  const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+  const [created] = await db.insert(users).values({
+    name: b.name,
+    email: b.email,
+    passwordHash,
+    role: role,
+    campaignId: b.campaignId || s.campaignId,
+    coordinatorId: b.coordinatorId || (s.role === "coordinator" ? s.id : null),
+    leaderId: b.leaderId || (s.role === "leader" ? s.id : null),
+    territory: b.territory,
+    phone: b.phone,
+    document: b.document,
+    city: b.city,
+    active: true,
+  }).returning();
+
+  return NextResponse.json({ success: true, user: created, tempPassword });
 }
