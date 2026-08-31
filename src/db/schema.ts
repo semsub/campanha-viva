@@ -110,6 +110,8 @@ export const auditLogs = pgTable("audit_logs", {
   entity: text("entity"),
   entityId: integer("entity_id"),
   detail: text("detail"),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
   ip: text("ip"),
   actorId: integer("actor_id"),
   userId: integer("user_id"),
