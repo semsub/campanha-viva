@@ -11,6 +11,7 @@ export interface SessionUser {
   name: string;
   role: Role;
   campaignId?: number | null;
+  coordinatorId?: number | null;
 }
 
 export function verifyToken(token: string): SessionUser | null {
