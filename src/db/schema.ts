@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   campaignId: integer("campaign_id"),
   managerId: integer("manager_id"),
   coordinatorId: integer("coordinator_id"),
+  active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
