@@ -9,6 +9,7 @@ export interface SessionUser {
   email: string;
   name: string;
   role: string;
+  campaignId?: number | null;
 }
 
 export function verifyToken(token: string): SessionUser | null {
