@@ -6,7 +6,7 @@ export const users = pgTable("users", {
   password: text("password"),
   passwordHash: text("password_hash"),
   name: text("name").notNull(),
-  role: text("role").$type<"ADMIN" | "MANAGER" | "COORDINATOR" | "LEADER" | "USER">().notNull().default("USER"),
+  role: text("role").$type<"super_admin" | "ADMIN" | "MANAGER" | "COORDINATOR" | "LEADER" | "USER">().notNull().default("USER"),
   campaignId: integer("campaign_id"),
   managerId: integer("manager_id"),
   coordinatorId: integer("coordinator_id"),
