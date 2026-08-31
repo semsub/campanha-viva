@@ -61,6 +61,7 @@ export const demandCategories = pgTable("demand_categories", {
 export const municipalities = pgTable("municipalities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  state: text("state"),
 });
 
 export const regions = pgTable("regions", {
