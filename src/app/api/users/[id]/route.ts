@@ -5,13 +5,14 @@ import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canManageTarget, Role } from "@/lib/permissions";
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "não autorizado" }, { status: 401 });
   }
 
-  const userId = parseInt(params.id);
+  const resolvedParams = await params;
+  const userId = parseInt(resolvedParams.id);
   if (isNaN(userId)) {
     return NextResponse.json({ error: "id inválido" }, { status: 400 });
   }
@@ -43,13 +44,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json({ success: true, user: updated });
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "não autorizado" }, { status: 401 });
   }
 
-  const userId = parseInt(params.id);
+  const resolvedParams = await params;
+  const userId = parseInt(resolvedParams.id);
   if (isNaN(userId)) {
     return NextResponse.json({ error: "id inválido" }, { status: 400 });
   }
