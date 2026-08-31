@@ -9,6 +9,7 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("USER"),
   campaignId: integer("campaign_id"),
   managerId: integer("manager_id"),
+  coordinatorId: integer("coordinator_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
