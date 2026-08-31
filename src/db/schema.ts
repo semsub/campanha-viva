@@ -74,6 +74,7 @@ export const neighborhoods = pgTable("neighborhoods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   regionId: integer("region_id"),
+  municipalityId: integer("municipality_id"),
 });
 
 export const electoralZones = pgTable("electoral_zones", {
