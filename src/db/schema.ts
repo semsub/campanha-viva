@@ -39,6 +39,7 @@ export const demands = pgTable("demands", {
   createdBy: integer("created_by"),
   assignedTo: integer("assigned_to"),
   coordinatorId: integer("coordinator_id"),
+  voterId: integer("voter_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
