@@ -27,6 +27,9 @@ export const voters = pgTable("voters", {
   name: text("name").notNull(),
   phone: text("phone"),
   campaignId: integer("campaign_id"),
+  coordinatorId: integer("coordinator_id"),
+  createdBy: integer("created_by"),
+  leaderId: integer("leader_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
