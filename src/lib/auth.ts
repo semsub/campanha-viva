@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
+import { Role } from "@/lib/permissions";
 
 const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto_padrao";
 export const COOKIE_NAME = "auth_token";
@@ -8,7 +9,7 @@ export interface SessionUser {
   id: number;
   email: string;
   name: string;
-  role: string;
+  role: Role;
   campaignId?: number | null;
 }
 
@@ -37,7 +38,7 @@ export async function getSession(): Promise<SessionUser | null> {
 }
 
 export function isAdmin(user: SessionUser | null): boolean {
-  return user?.role === "ADMIN" || user?.role === "admin";
+  return user?.role === "admin" || user?.role === "super_admin";
 }
 
 export function verifyPassword(password: string, hash: string): boolean {
