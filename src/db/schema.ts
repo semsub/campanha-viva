@@ -57,6 +57,7 @@ export const auditLogs = pgTable("audit_logs", {
   detail: text("detail"),
   ip: text("ip"),
   actorId: integer("actor_id"),
+  userId: integer("user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
