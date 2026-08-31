@@ -1,62 +1,101 @@
 import { NextRequest, NextResponse } from "next/server";
+import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { db } from "@/db";
-import { voters, users } from "@/db/schema";
-import { eq, and, ilike, or, desc, count, inArray } from "drizzle-orm";
-import { getSessionFromRequest } from "@/lib/api-auth";
-import { logAudit } from "@/lib/audit";
-import { ensureSetup } from "@/lib/setup";
+import { voters, users, auditLogs } from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { coordinatorScopeIdForUser, votersVisibilityFilter } from "@/lib/scope";
 
-async function getTeamIds(s: { id: number; role: string }): Promise<number[] | null> {
-  if (s.role === "super_admin" || s.role === "admin") return null; // vê tudo
-  if (s.role === "coordinator") {
-    const leaders = await db.select({ id: users.id }).from(users)
-      .where(and(eq(users.managerId, s.id), eq(users.role, "leader")));
-    return [s.id, ...leaders.map(l => l.id)];
-  }
-  return [s.id]; // leader vê só os que ele cadastrou
-}
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const s = getSessionFromRequest(req);
-  if (!s) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  await ensureSetup();
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const q = new URL(req.url).searchParams.get("q")?.trim();
 
-  const search = req.nextUrl.searchParams.get("search") ?? "";
-  const page = Math.max(1, Number(req.nextUrl.searchParams.get("page")) || 1);
-  const limit = Math.min(1000, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 20));
+  const filter = votersVisibilityFilter(s);
+  const where = q
+    ? and(filter, or(
+        ilike(voters.name, `%${q}%`),
+        ilike(voters.phone, `%${q}%`),
+        ilike(voters.voterTitle, `%${q}%`),
+        ilike(voters.neighborhood, `%${q}%`),
+        ilike(voters.city, `%${q}%`),
+      ))!
+    : filter;
 
-  const conds = [eq(voters.active, true)];
-  if (search) conds.push(or(ilike(voters.name, `%${search}%`), ilike(voters.phone ?? "", `%${search}%`))!);
-
-  const teamIds = await getTeamIds(s);
-  if (teamIds) conds.push(inArray(voters.registeredById, teamIds));
-
-  const where = and(...conds);
-  const [total] = await db.select({ c: count() }).from(voters).where(where);
-  const rows = await db.select().from(voters).where(where).orderBy(desc(voters.createdAt)).limit(limit).offset((page - 1) * limit);
-  return NextResponse.json({ voters: rows, total: total.c, page, limit });
+  const rows = await db
+    .select({
+      id: voters.id, name: voters.name, phone: voters.phone,
+      voterTitle: voters.voterTitle, zone: voters.zone, section: voters.section,
+      street: voters.street, number: voters.number,
+      neighborhood: voters.neighborhood, city: voters.city,
+      birthDate: voters.birthDate, notes: voters.notes,
+      leaderId: voters.leaderId, leaderName: users.name,
+      coordinatorId: voters.coordinatorId, createdBy: voters.createdBy,
+      createdAt: voters.createdAt,
+    })
+    .from(voters)
+    .leftJoin(users, eq(voters.leaderId, users.id))
+    .where(where)
+    .orderBy(desc(voters.createdAt))
+    .limit(500);
+  return NextResponse.json({ voters: rows });
 }
 
 export async function POST(req: NextRequest) {
-  const s = getSessionFromRequest(req);
-  if (!s) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  // TODOS os perfis podem cadastrar eleitores (inclusive leader)
-  await ensureSetup();
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const b = (await req.json()) as {
+    name?: string; phone?: string; voterTitle?: string;
+    zone?: string; section?: string;
+    street?: string; number?: string; neighborhood?: string; city?: string;
+    birthDate?: string; notes?: string;
+    leaderId?: number;
+  };
+  if (!b.name) return NextResponse.json({ error: "nome é obrigatório" }, { status: 400 });
 
-  const body = await req.json();
-  if (!body.name) return NextResponse.json({ error: "Nome é obrigatório." }, { status: 400 });
+  let leaderId: number | null = null;
+  let coordinatorId: number | null = null;
 
-  const [created] = await db.insert(voters).values({
-    name: body.name, phone: body.phone, email: body.email,
-    address: body.address, addressNumber: body.addressNumber,
-    neighborhoodId: body.neighborhoodId, municipalityId: body.municipalityId,
-    cep: body.cep, electoralZone: body.electoralZone,
-    electoralSection: body.electoralSection, votingLocation: body.votingLocation,
-    birthDate: body.birthDate, referencePoint: body.referencePoint,
-    coordinatorId: s.role === "coordinator" ? s.id : body.coordinatorId,
-    registeredById: s.id, notes: body.notes,
-  }).returning();
+  if (s.role === "leader") {
+    leaderId = s.id;
+    coordinatorId = coordinatorScopeIdForUser(s);
+  } else if (s.role === "coordinator") {
+    coordinatorId = s.id;
+    if (b.leaderId) {
+      const [ld] = await db.select().from(users).where(eq(users.id, Number(b.leaderId)));
+      if (!ld || ld.coordinatorId !== s.id) {
+        return NextResponse.json({ error: "liderança não pertence a você" }, { status: 403 });
+      }
+      leaderId = ld.id;
+    }
+  } else {
+    // super_admin
+    if (b.leaderId) {
+      const [ld] = await db.select().from(users).where(eq(users.id, Number(b.leaderId)));
+      if (ld) { leaderId = ld.id; coordinatorId = ld.coordinatorId ?? null; }
+    }
+  }
 
-  await logAudit({ actorId: s.id, action: "voter_created", entity: "voters", entityId: created.id, ip: req.headers.get("x-forwarded-for") });
-  return NextResponse.json({ voter: created }, { status: 201 });
+  const [row] = await db.insert(voters).values({
+    name: b.name.trim(),
+    phone: b.phone ?? null,
+    voterTitle: b.voterTitle ?? null,
+    zone: b.zone ?? null,
+    section: b.section ?? null,
+    street: b.street ?? null,
+    number: b.number ?? null,
+    neighborhood: b.neighborhood ?? null,
+    city: b.city ?? null,
+    birthDate: b.birthDate ?? null,
+    notes: b.notes ?? null,
+    leaderId, coordinatorId, createdBy: s.id,
+  }).returning({ id: voters.id });
+
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "voter_create", entity: "voters", entityId: row.id,
+    detail: `Cadastrou eleitor ${b.name}`, ip: req.headers.get("x-forwarded-for"),
+  });
+  return NextResponse.json({ ok: true, id: row.id });
 }

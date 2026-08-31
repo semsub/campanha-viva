@@ -1,30 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { events } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
-import { getSessionFromRequest } from "@/lib/api-auth";
-import { logAudit } from "@/lib/audit";
-import { ensureSetup } from "@/lib/setup";
+import { events, auditLogs } from "@/db/schema";
+import { getSession } from "@/lib/auth";
+import { coordinatorScopeIdForUser } from "@/lib/scope";
 
-export async function GET(req: NextRequest) {
-  const session = getSessionFromRequest(req);
-  if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  await ensureSetup();
-  const rows = await db.select().from(events).where(eq(events.active, true)).orderBy(desc(events.eventDate)).limit(100);
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export async function GET() {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const where = s.role === "super_admin"
+    ? sql`TRUE`
+    : s.role === "coordinator"
+      ? eq(events.coordinatorId, s.id)
+      : eq(events.createdBy, s.id);
+  const rows = await db.select().from(events).where(where).orderBy(desc(events.eventDate)).limit(500);
   return NextResponse.json({ events: rows });
 }
 
 export async function POST(req: NextRequest) {
-  const session = getSessionFromRequest(req);
-  if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  await ensureSetup();
-  const body = await req.json();
-  if (!body.title) return NextResponse.json({ error: "Título obrigatório." }, { status: 400 });
-  const [created] = await db.insert(events).values({
-    title: body.title, description: body.description, type: body.type ?? "reuniao",
-    eventDate: body.eventDate ? new Date(body.eventDate) : null, location: body.location,
-    responsibleId: body.responsibleId ?? session.id, regionId: body.regionId, createdById: session.id, notes: body.notes,
-  }).returning();
-  await logAudit({ actorId: session.id, action: "event_created", entity: "events", entityId: created.id, ip: req.headers.get("x-forwarded-for") });
-  return NextResponse.json({ event: created }, { status: 201 });
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const b = (await req.json()) as {
+    title?: string; description?: string; location?: string; eventDate?: string;
+  };
+  if (!b.title || !b.eventDate) {
+    return NextResponse.json({ error: "título e data são obrigatórios" }, { status: 400 });
+  }
+  const [row] = await db.insert(events).values({
+    title: b.title.trim(),
+    description: b.description ?? null,
+    location: b.location ?? null,
+    eventDate: b.eventDate,
+    coordinatorId: coordinatorScopeIdForUser(s),
+    createdBy: s.id,
+  }).returning({ id: events.id });
+  await db.insert(auditLogs).values({
+    actorId: s.id, action: "event_create", entity: "events", entityId: row.id,
+    detail: `Novo evento: ${b.title}`, ip: req.headers.get("x-forwarded-for"),
+  });
+  return NextResponse.json({ ok: true, id: row.id });
 }

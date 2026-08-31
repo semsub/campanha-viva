@@ -1,83 +1,69 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db } from "@/db";
-import { users, leaderships, voters, demands } from "@/db/schema";
-import { eq, and, count } from "drizzle-orm";
+import { users, voters, demands } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await getSession();
-    if (!session || !["super_admin", "admin", "coordinator"].includes(session.role)) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-    const { id } = await params;
-    const cid = parseInt(id);
-    if (isNaN(cid)) {
-      return NextResponse.json({ error: "ID inválido" }, { status: 400 });
-    }
+// Retorna todos os dados de um coordenador específico:
+// - as lideranças dele
+// - os eleitores dele
+// - as demandas do escopo
+// EXCLUSIVO do Super Admin.
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  if (s.role !== "super_admin" && s.role !== "admin") return NextResponse.json({ error: "sem permissão" }, { status: 403 });
 
-    // Buscar dados do coordenador
-    const [coordinator] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.id, cid), eq(users.role, "coordinator")))
-      .limit(1);
+  const { id } = await ctx.params;
+  const cid = Number(id);
 
-    if (!coordinator) {
-      return NextResponse.json({ error: "Coordenador não encontrado" }, { status: 404 });
-    }
-
-    // Buscar líderes associados a este coordenador via tabela leaderships
-    const rowsLeaders = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        phone: users.phone,
-        active: users.active,
-        createdAt: users.createdAt,
-      })
-      .from(leaderships)
-      .innerJoin(users, eq(leaderships.userId, users.id))
-      .where(eq(leaderships.coordinatorId, cid));
-
-    // Buscar eleitores do coordenador
-    const rowsVoters = await db
-      .select({
-        id: voters.id,
-        name: voters.name,
-        phone: voters.phone,
-        status: voters.status,
-        createdAt: voters.createdAt,
-      })
-      .from(voters)
-      .where(eq(voters.coordinatorId, cid));
-
-    // Buscar demandas do coordenador
-    const rowsDemands = await db
-      .select()
-      .from(demands)
-      .where(eq(demands.coordinatorId, cid));
-
-    return NextResponse.json({
-      coordinator,
-      leaders: rowsLeaders,
-      voters: rowsVoters,
-      demands: rowsDemands,
-      stats: {
-        leadersCount: rowsLeaders.length,
-        votersCount: rowsVoters.length,
-        demandsCount: rowsDemands.length,
-        openDemands: rowsDemands.filter((d) => d.status === "aberta").length,
-        resolvedDemands: rowsDemands.filter((d) => d.status === "resolvida").length,
-      },
-    });
-  } catch (error) {
-    console.error("Erro ao gerar relatório detalhado do coordenador:", error);
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
+  const [coord] = await db.select().from(users).where(eq(users.id, cid));
+  if (!coord || coord.role !== "coordinator") {
+    return NextResponse.json({ error: "coordenador não encontrado" }, { status: 404 });
   }
+
+  const leaders = await db
+    .select({ id: users.id, name: users.name, email: users.email, phone: users.phone, active: users.active, createdAt: users.createdAt })
+    .from(users)
+    .where(and(eq(users.role, "leader"), eq(users.coordinatorId, cid))!);
+
+  const rowsVoters = await db
+    .select({
+      id: voters.id, name: voters.name, phone: voters.phone,
+      voterTitle: voters.voterTitle, zone: voters.zone, section: voters.section,
+      neighborhood: voters.neighborhood, city: voters.city,
+      leaderId: voters.leaderId, leaderName: users.name,
+      createdAt: voters.createdAt,
+    })
+    .from(voters)
+    .leftJoin(users, eq(voters.leaderId, users.id))
+    .where(eq(voters.coordinatorId, cid))
+    .orderBy(desc(voters.createdAt))
+    .limit(500);
+
+  const rowsDemands = await db
+    .select({
+      id: demands.id, title: demands.title, category: demands.category,
+      status: demands.status, priority: demands.priority,
+      voterId: demands.voterId, voterName: voters.name,
+      createdAt: demands.createdAt,
+    })
+    .from(demands)
+    .leftJoin(voters, eq(demands.voterId, voters.id))
+    .where(eq(demands.coordinatorId, cid))
+    .orderBy(desc(demands.createdAt))
+    .limit(500);
+
+  return NextResponse.json({
+    coordinator: {
+      id: coord.id, name: coord.name, email: coord.email,
+      phone: coord.phone, active: coord.active, territory: coord.territory,
+    },
+    leaders,
+    voters: rowsVoters,
+    demands: rowsDemands,
+  });
 }

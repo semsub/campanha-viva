@@ -1,49 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, auditLogs } from "@/db/schema";
-import { verifyPassword, createToken, COOKIE_NAME } from "@/lib/auth";
-import { ensureSetup } from "@/lib/setup";
+import { verifyPassword, createSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  let body: { email?: string; password?: string };
-  try { body = await req.json(); } catch {
-    return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
-  }
-
-  const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
-  const password = typeof body.password === "string" ? body.password : "";
-  if (!email || !password) return NextResponse.json({ error: "Informe e-mail e senha." }, { status: 400 });
-
-  try { await ensureSetup(); } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[LOGIN] DB setup:", msg);
-    return NextResponse.json({ error: "Banco indisponível. Verifique DATABASE_URL.", detail: msg }, { status: 503 });
-  }
-
   try {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    const ip = req.headers.get("x-forwarded-for") ?? "—";
-
-    if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
-      if (user) { try { await db.insert(auditLogs).values({ userId: user.id, action: "login_failed", entity: "users", entityId: user.id, ip }); } catch {} }
-      return NextResponse.json({ error: "E-mail ou senha incorretos." }, { status: 401 });
+    const { email, password } = (await req.json()) as { email?: string; password?: string };
+    if (!email || !password) {
+      return Response.json({ error: "Informe e-mail e senha." }, { status: 400 });
     }
 
-    const token = createToken({ id: user.id, name: user.name, email: user.email, role: user.role, territory: user.territory });
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase().trim()));
+    const ip = req.headers.get("x-forwarded-for") ?? null;
 
-    const res = NextResponse.json({
-      ok: true, role: user.role, name: user.name,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
+      try {
+        if (user) {
+          await db.insert(auditLogs).values({
+            userId: user.id, action: "login_failed", entity: "users", entityId: user.id, ip,
+          });
+        }
+      } catch { /* não bloqueia retorno */ }
+      return Response.json({ error: "Credenciais inválidas ou usuário inativo." }, { status: 401 });
+    }
+
+    // Para coord: coordinatorId = ele mesmo; para leader: valor da coluna; para super: null
+    const coordinatorId =
+      user.role === "coordinator" ? user.id :
+      user.role === "leader" ? (user.coordinatorId ?? null) : null;
+
+    await createSession({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      territory: user.territory,
+      coordinatorId,
     });
-    res.cookies.set(COOKIE_NAME, token, { httpOnly: true, sameSite: "lax", secure: false, maxAge: 12 * 3600, path: "/" });
 
-    try { await db.insert(auditLogs).values({ userId: user.id, action: "login_success", entity: "users", entityId: user.id, ip }); } catch {}
+    try {
+      await db.insert(auditLogs).values({
+        userId: user.id, action: "login_success", entity: "users", entityId: user.id, ip,
+      });
+    } catch { /* não bloqueia login */ }
 
-    return res;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[LOGIN]", msg);
-    return NextResponse.json({ error: "Falha ao consultar banco.", detail: msg }, { status: 500 });
+    return Response.json({ ok: true, role: user.role, name: user.name });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("login error:", msg);
+    return Response.json({ error: `Falha no servidor: ${msg}` }, { status: 500 });
   }
 }

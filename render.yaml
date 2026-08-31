@@ -6,12 +6,13 @@ services:
     region: oregon
     buildCommand: npm ci && npm run build
     startCommand: npm run start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       - key: DATABASE_URL
-        sync: false        # cole a Connection String do Neon no painel
+        sync: false        # colar no painel do Render manualmente (mais seguro)
       - key: SESSION_SECRET
-        generateValue: true
-      - key: SETUP_TOKEN
-        generateValue: true
+        sync: false        # colar no painel — pode ser qualquer frase longa

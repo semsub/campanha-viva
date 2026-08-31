@@ -80,7 +80,9 @@ async function checkStatus() {
 }
 
 async function runMigrations() {
-  await pool.query(`DO $$ BEGIN CREATE TYPE user_role AS ENUM ('super_admin','coordinator','leader'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+  await pool.query(`DO $$ BEGIN CREATE TYPE user_role AS ENUM ('super_admin','admin','coordinator','leader'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+  // Se o enum foi criado numa versão antiga sem 'admin', adiciona agora
+  await pool.query(`DO $$ BEGIN ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'admin' BEFORE 'coordinator'; EXCEPTION WHEN OTHERS THEN NULL; END $$;`);
   await pool.query(`DO $$ BEGIN CREATE TYPE demand_status AS ENUM ('aberta','em_andamento','resolvida','cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
   await pool.query(`DO $$ BEGIN CREATE TYPE demand_priority AS ENUM ('baixa','media','alta','urgente'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
   await pool.query(`DO $$ BEGIN CREATE TYPE task_status AS ENUM ('pendente','em_andamento','concluida'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);

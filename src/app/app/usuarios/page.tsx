@@ -7,12 +7,12 @@ import { formatDate } from "@/lib/format";
 
 type U = {
   id: number; name: string; email: string; phone: string | null;
-  role: "super_admin"|"coordinator"|"leader"; territory: string | null;
+  role: "super_admin"|"admin"|"coordinator"|"leader"; territory: string | null;
   active: boolean; createdAt: string;
   coordinatorId: number | null; managerId: number | null;
 };
 
-type Me = { id: number; role: "super_admin"|"coordinator"|"leader" };
+type Me = { id: number; role: "super_admin"|"admin"|"coordinator"|"leader" };
 
 const emptyForm = { name: "", email: "", phone: "", password: "", role: "leader" as U["role"], territory: "" };
 
@@ -42,11 +42,13 @@ export default function UsuariosPage() {
   useEffect(() => { load(); }, [load]);
 
   const isSuper = me?.role === "super_admin";
+  const isAdmin = me?.role === "admin";
   const isCoord = me?.role === "coordinator";
 
   // Papéis que ESTE usuário pode criar
   const availableRoles: U["role"][] =
-    isSuper ? ["coordinator", "leader"]
+    isSuper ? ["admin", "coordinator", "leader"]
+    : isAdmin ? ["admin", "coordinator", "leader"]
     : isCoord ? ["leader"]
     : [];
 
@@ -136,7 +138,9 @@ export default function UsuariosPage() {
                 {displayed.map((u) => {
                   const canManage =
                     (isSuper) ||
+                    (isAdmin && u.role !== "super_admin") ||
                     (isCoord && u.role === "leader" && u.coordinatorId === me?.id);
+                  const canChangePwd = isSuper || (isAdmin && u.role !== "super_admin");
                   return (
                     <tr key={u.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-semibold text-[#003B6F]">{u.name}</td>
@@ -153,7 +157,7 @@ export default function UsuariosPage() {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {canManage ? (
                           <>
-                            {isSuper && (
+                            {canChangePwd && (
                               <button className="text-orange-600 font-semibold mr-3" onClick={() => { setPwOpen(u); setPw(""); setPwMsg(null); }}>Senha</button>
                             )}
                             <button className="text-[#003B6F] font-semibold mr-3" onClick={() => toggle(u)}>{u.active ? "Desativar" : "Ativar"}</button>

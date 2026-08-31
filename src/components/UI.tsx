@@ -1,80 +1,122 @@
-import React from 'react';
+"use client";
 
-export function Card({ children, className = '' }: { children: React.ReactNode, className?: string }) {
-  return <div className={`bg-white rounded-lg shadow-sm border p-4 ${className}`}>{children}</div>;
-}
+import { ReactNode } from "react";
 
-export function PageHeader({ title, subtitle, children, actions }: { title: string, subtitle?: string, children?: React.ReactNode, actions?: React.ReactNode }) {
-  const headerActions = actions || children;
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
-    <div className="flex justify-between items-center mb-6">
+    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+        <h1 className="text-2xl md:text-3xl font-extrabold text-[#003B6F]">{title}</h1>
+        {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
       </div>
-      {headerActions && <div className="flex gap-2">{headerActions}</div>}
+      {actions && <div className="flex gap-2">{actions}</div>}
     </div>
   );
 }
 
-export function Badge({ children, color = 'blue' }: { children: React.ReactNode, color?: string }) {
-  return <span className={`px-2 py-1 text-xs font-medium rounded-full bg-${color}-100 text-${color}-800`}>{children}</span>;
-}
-
-export function EmptyState({ message, title, hint }: { message?: string, title?: string, hint?: string }) {
-  const text = message || title || "Nenhum registro encontrado";
+export function Btn({
+  children,
+  onClick,
+  variant = "primary",
+  type = "button",
+  disabled,
+  className = "",
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "secondary" | "danger" | "ghost";
+  type?: "button" | "submit";
+  disabled?: boolean;
+  className?: string;
+}) {
+  const base = "px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed";
+  const styles = {
+    primary: "bg-gradient-to-br from-[#F07A1A] to-[#FF9A3A] text-white shadow-md hover:-translate-y-0.5",
+    secondary: "bg-[#003B6F] text-white hover:bg-[#00264D]",
+    danger: "bg-red-600 text-white hover:bg-red-700",
+    ghost: "bg-slate-100 text-slate-700 hover:bg-slate-200",
+  }[variant];
   return (
-    <div className="text-center py-12 px-4 bg-gray-50 rounded-lg border border-dashed">
-      <p className="text-gray-700 font-medium">{text}</p>
-      {hint && <p className="text-sm text-gray-400 mt-1">{hint}</p>}
-    </div>
-  );
-}
-
-export function Btn({ children, onClick, variant = 'primary', className = '', type = 'button' }: any) {
-  const base = "px-4 py-2 rounded-md font-medium transition-colors";
-  const variants: any = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700",
-    secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300",
-    danger: "bg-red-600 text-white hover:bg-red-700"
-  };
-  return <button type={type} onClick={onClick} className={`${base} ${variants[variant]} ${className}`}>{children}</button>;
-}
-
-export function Field({ label, error, children }: { label: string, error?: string, children: React.ReactNode }) {
-  return (
-    <div className="mb-4">
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles} ${className}`}>
       {children}
-      {error && <span className="text-red-500 text-xs mt-1 block">{error}</span>}
+    </button>
+  );
+}
+
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 ${className}`}>{children}</div>;
+}
+
+export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-slate-100">
+          <h3 className="font-bold text-[#003B6F]">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">×</button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
     </div>
+  );
+}
+
+export function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-semibold uppercase tracking-wider text-[#003B6F] mb-1">{label}</span>
+      {children}
+    </label>
   );
 }
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${props.className || ''}`} />;
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#F07A1A] focus:outline-none focus:ring-2 focus:ring-[#F07A1A]/20 ${props.className ?? ""}`}
+    />
+  );
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`w-full px-3 py-2 border rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${props.className || ''}`}>{props.children}</select>;
+  return (
+    <select
+      {...props}
+      className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-[#F07A1A] focus:outline-none focus:ring-2 focus:ring-[#F07A1A]/20 ${props.className ?? ""}`}
+    />
+  );
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${props.className || ''}`} />;
+  return (
+    <textarea
+      {...props}
+      className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#F07A1A] focus:outline-none focus:ring-2 focus:ring-[#F07A1A]/20 ${props.className ?? ""}`}
+    />
+  );
 }
 
-export function Modal({ isOpen, open, onClose, title, children }: { isOpen?: boolean, open?: boolean, onClose: () => void, title: string, children: React.ReactNode }) {
-  const visible = isOpen ?? open ?? false;
-  if (!visible) return null;
+export function Badge({ children, color = "slate" }: { children: ReactNode; color?: string }) {
+  const map: Record<string, string> = {
+    slate: "bg-slate-100 text-slate-700",
+    blue: "bg-blue-100 text-blue-700",
+    orange: "bg-orange-100 text-orange-700",
+    green: "bg-emerald-100 text-emerald-700",
+    red: "bg-red-100 text-red-700",
+    yellow: "bg-yellow-100 text-yellow-800",
+    purple: "bg-purple-100 text-purple-700",
+  };
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${map[color] ?? map.slate}`}>{children}</span>;
+}
+
+export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-lg overflow-hidden shadow-xl">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-lg font-bold">{title}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
+    <div className="text-center py-14">
+      <div className="text-5xl mb-2">📭</div>
+      <div className="font-semibold text-[#003B6F]">{title}</div>
+      {hint && <div className="text-sm text-slate-500 mt-1">{hint}</div>}
     </div>
   );
 }

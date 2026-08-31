@@ -15,9 +15,10 @@ export const pool =
   globalForDb.__arenaNextJsPostgresqlPool ??
   new Pool({
     connectionString: databaseUrl,
-    ssl: databaseUrl.includes("neon.tech") || databaseUrl.includes("neon.")
-      ? { rejectUnauthorized: false }
-      : undefined,
+    // Neon exige TLS; quando DATABASE_URL apontar para neon.tech, ativa SSL
+    ...(databaseUrl.includes("neon.tech")
+      ? { ssl: { rejectUnauthorized: false } }
+      : {}),
   });
 
 if (process.env.NODE_ENV !== "production") {
