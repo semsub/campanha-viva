@@ -51,6 +51,11 @@ export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),
   protocol: text("protocol"),
+  entity: text("entity"),
+  entityId: integer("entity_id"),
+  detail: text("detail"),
+  ip: text("ip"),
+  actorId: integer("actor_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
