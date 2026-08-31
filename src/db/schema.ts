@@ -12,12 +12,14 @@ export const users = pgTable("users", {
   coordinatorId: integer("coordinator_id"),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const voters = pgTable("voters", {
@@ -26,6 +28,7 @@ export const voters = pgTable("voters", {
   phone: text("phone"),
   campaignId: integer("campaign_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const demands = pgTable("demands", {
@@ -41,6 +44,7 @@ export const demands = pgTable("demands", {
   coordinatorId: integer("coordinator_id"),
   voterId: integer("voter_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const tasks = pgTable("tasks", {
@@ -54,6 +58,7 @@ export const tasks = pgTable("tasks", {
   assignedTo: integer("assigned_to"),
   coordinatorId: integer("coordinator_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const events = pgTable("events", {
@@ -65,6 +70,7 @@ export const events = pgTable("events", {
   createdBy: integer("created_by"),
   coordinatorId: integer("coordinator_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
