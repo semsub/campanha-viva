@@ -2,12 +2,12 @@
   "name": "nextjs-postgresql-template",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --env-file=.env node_modules/next/dist/bin/next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "seed": "node scripts/seed-super-admin.mjs",
+    "seed": "node --env-file=.env scripts/seed-super-admin.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
