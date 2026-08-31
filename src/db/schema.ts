@@ -23,6 +23,7 @@ export const users = pgTable("users", {
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -40,6 +41,7 @@ export const voters = pgTable("voters", {
   coordinatorId: integer("coordinator_id"),
   createdBy: integer("created_by"),
   leaderId: integer("leader_id"),
+  active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -123,12 +125,14 @@ export const municipalities = pgTable("municipalities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   state: text("state"),
+  active: boolean("active").default(true),
 });
 
 export const regions = pgTable("regions", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   municipalityId: integer("municipality_id"),
+  active: boolean("active").default(true),
 });
 
 export const neighborhoods = pgTable("neighborhoods", {
@@ -136,6 +140,7 @@ export const neighborhoods = pgTable("neighborhoods", {
   name: text("name").notNull(),
   regionId: integer("region_id"),
   municipalityId: integer("municipality_id"),
+  active: boolean("active").default(true),
 });
 
 export const electoralZones = pgTable("electoral_zones", {
@@ -143,4 +148,5 @@ export const electoralZones = pgTable("electoral_zones", {
   name: text("name"),
   zone: text("zone"),
   municipalityId: integer("municipality_id"),
+  active: boolean("active").default(true),
 });
