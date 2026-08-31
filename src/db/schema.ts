@@ -38,6 +38,7 @@ export const demands = pgTable("demands", {
   campaignId: integer("campaign_id"),
   createdBy: integer("created_by"),
   assignedTo: integer("assigned_to"),
+  coordinatorId: integer("coordinator_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -50,6 +51,7 @@ export const tasks = pgTable("tasks", {
   campaignId: integer("campaign_id"),
   createdBy: integer("created_by"),
   assignedTo: integer("assigned_to"),
+  coordinatorId: integer("coordinator_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -60,6 +62,7 @@ export const events = pgTable("events", {
   date: timestamp("date").notNull(),
   campaignId: integer("campaign_id"),
   createdBy: integer("created_by"),
+  coordinatorId: integer("coordinator_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
