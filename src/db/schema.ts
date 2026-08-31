@@ -67,6 +67,8 @@ export const tasks = pgTable("tasks", {
   description: text("description"),
   status: text("status").default("PENDING").notNull(),
   priority: text("priority").default("NORMAL"),
+  dueDate: text("due_date"),
+  startDate: text("start_date"),
   campaignId: integer("campaign_id"),
   createdBy: integer("created_by"),
   assignedTo: integer("assigned_to"),
