@@ -1,28 +1,42 @@
 import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
+import type { Role } from "@/lib/permissions";
 
-export async function logAudit(params: {
-  userId?: number | null;
+// Utilitário central de auditoria — nunca registra senha/token
+export async function audit(params: {
   actorId?: number | null;
+  actorRole?: Role | null;
   action: string;
   entity?: string;
-  entityId?: number;
-  oldValue?: string;
-  newValue?: string;
+  entityId?: number | null;
+  detail?: string;
   ip?: string | null;
+  userAgent?: string | null;
+  success?: boolean;
 }) {
   try {
     await db.insert(auditLogs).values({
-      userId: params.userId ?? undefined,
-      actorId: params.actorId ?? undefined,
+      actorId: params.actorId ?? null,
+      actorRole: params.actorRole ?? null,
       action: params.action,
-      entity: params.entity,
-      entityId: params.entityId,
-      oldValue: params.oldValue,
-      newValue: params.newValue,
-      ip: params.ip ?? undefined,
+      entity: params.entity ?? null,
+      entityId: params.entityId ?? null,
+      detail: params.detail ?? null,
+      ip: params.ip ?? null,
+      userAgent: params.userAgent ?? null,
+      success: params.success ?? true,
     });
-  } catch (err) {
-    console.error("[AUDIT] Falha ao registrar log:", err);
+  } catch {
+    // Não pode quebrar o fluxo principal se auditoria falhar
   }
+}
+
+export function ipOf(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("x-real-ip")
+    ?? "unknown";
+}
+
+export function uaOf(req: Request): string {
+  return req.headers.get("user-agent") ?? "unknown";
 }

@@ -1,159 +1,201 @@
-import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
-import { Role } from "@/lib/permissions";
+import {
+  pgTable,
+  pgEnum,
+  serial,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  uniqueIndex,
+  index,
+  doublePrecision,
+} from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  email: text("email").unique().notNull(),
-  password: text("password"),
-  passwordHash: text("password_hash"),
-  name: text("name").notNull(),
-  role: text("role").$type<Role>().notNull().default("leader"),
-  campaignId: integer("campaign_id"),
-  managerId: integer("manager_id"),
-  coordinatorId: integer("coordinator_id"),
-  leaderId: integer("leader_id"),
-  territory: text("territory"),
-  phone: text("phone"),
-  document: text("document"),
-  city: text("city"),
-  active: boolean("active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+// ============ ENUMS ============
+// Hierarquia piramidal: super_admin → admin → coordinator → leader
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "coordinator", "leader"]);
+export const demandStatusEnum = pgEnum("demand_status", ["pendente", "em_andamento", "concluido", "cancelado"]);
+export const demandPriorityEnum = pgEnum("demand_priority", ["baixa", "media", "alta", "urgente"]);
+export const taskStatusEnum = pgEnum("task_status", ["pendente", "em_andamento", "concluido", "cancelado"]);
+export const eventStatusEnum = pgEnum("event_status", ["agendado", "em_andamento", "concluido", "cancelado"]);
 
+// ============ CAMPANHAS ============
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  active: boolean("active").default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const voters = pgTable("voters", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  phone: text("phone"),
-  voterTitle: text("voter_title"),
-  zone: text("zone"),
-  section: text("section"),
-  street: text("street"),
-  number: text("number"),
-  neighborhood: text("neighborhood"),
-  city: text("city"),
-  birthDate: text("birth_date"),
-  notes: text("notes"),
-  campaignId: integer("campaign_id"),
-  coordinatorId: integer("coordinator_id"),
-  createdBy: integer("created_by"),
-  leaderId: integer("leader_id"),
-  active: boolean("active").default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const demands = pgTable("demands", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
   description: text("description"),
-  status: text("status").default("PENDING").notNull(),
-  priority: text("priority").default("NORMAL"),
-  category: text("category"),
-  campaignId: integer("campaign_id"),
-  createdBy: integer("created_by"),
-  assignedTo: integer("assigned_to"),
-  coordinatorId: integer("coordinator_id"),
-  leaderId: integer("leader_id"),
-  voterId: integer("voter_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const tasks = pgTable("tasks", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description"),
-  status: text("status").default("PENDING").notNull(),
-  priority: text("priority").default("NORMAL"),
-  dueDate: text("due_date"),
-  startDate: text("start_date"),
-  campaignId: integer("campaign_id"),
-  createdBy: integer("created_by"),
-  assignedTo: integer("assigned_to"),
-  coordinatorId: integer("coordinator_id"),
-  leaderId: integer("leader_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+// ============ USUÁRIOS ============
+export const users = pgTable(
+  "users",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id").references(() => campaigns.id),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    passwordHash: text("password_hash").notNull(), // sempre com esse nome
+    role: userRoleEnum("role").notNull().default("leader"),
+    managerId: integer("manager_id"),       // quem criou/supervisiona
+    coordinatorId: integer("coordinator_id"), // p/ leader: coord dono
+    territory: text("territory"),
+    active: boolean("active").notNull().default(true),
+    lastLoginAt: timestamp("last_login_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("users_email_unique").on(t.email),
+    index("users_coord_idx").on(t.coordinatorId),
+    index("users_manager_idx").on(t.managerId),
+  ],
+);
 
-export const events = pgTable("events", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description"),
-  date: text("date"),
-  eventDate: text("event_date"),
-  location: text("location"),
-  latitude: text("latitude"),
-  longitude: text("longitude"),
-  status: text("status").default("PENDING"),
-  campaignId: integer("campaign_id"),
-  createdBy: integer("created_by"),
-  coordinatorId: integer("coordinator_id"),
-  leaderId: integer("leader_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const auditLogs = pgTable("audit_logs", {
-  id: serial("id").primaryKey(),
-  action: text("action").notNull(),
-  protocol: text("protocol"),
-  entity: text("entity"),
-  entityId: integer("entity_id"),
-  detail: text("detail"),
-  oldValue: text("old_value"),
-  newValue: text("new_value"),
-  ip: text("ip"),
-  actorId: integer("actor_id"),
-  userId: integer("user_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const demandCategories = pgTable("demand_categories", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  parentId: integer("parent_id"),
-  icon: text("icon"),
-  color: text("color"),
-  sortOrder: integer("sort_order"),
-  active: boolean("active").default(true),
-});
-
+// ============ TERRITÓRIO ============
 export const municipalities = pgTable("municipalities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  state: text("state"),
-  active: boolean("active").default(true),
+  uf: text("uf"),                // Ex: 'PA'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const regions = pgTable("regions", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  municipalityId: integer("municipality_id"),
-  active: boolean("active").default(true),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const neighborhoods = pgTable("neighborhoods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  regionId: integer("region_id"),
-  municipalityId: integer("municipality_id"),
-  active: boolean("active").default(true),
+  regionId: integer("region_id").references(() => regions.id),
+  municipalityId: integer("municipality_id").references(() => municipalities.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const electoralZones = pgTable("electoral_zones", {
-  id: serial("id").primaryKey(),
-  name: text("name"),
-  zone: text("zone"),
-  municipalityId: integer("municipality_id"),
-  active: boolean("active").default(true),
-});
+// ============ ELEITORES ============
+export const voters = pgTable(
+  "voters",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id").references(() => campaigns.id),
+    name: text("name").notNull(),
+    phone: text("phone"),                        // (00) 00000-0000
+    voterTitle: text("voter_title"),             // 0000 0000 0000  (sensível — oculto p/ leader)
+    zone: text("zone"),                          // 0000            (sensível)
+    section: text("section"),                    // 0000            (sensível)
+    street: text("street"),
+    number: text("number"),
+    neighborhood: text("neighborhood"),
+    city: text("city"),
+    uf: text("uf"),
+    birthDate: text("birth_date"),               // DD/MM/AAAA
+    notes: text("notes"),
+    leaderId: integer("leader_id").references(() => users.id),
+    coordinatorId: integer("coordinator_id").references(() => users.id),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("voters_coord_idx").on(t.coordinatorId),
+    index("voters_leader_idx").on(t.leaderId),
+    index("voters_creator_idx").on(t.createdBy),
+  ],
+);
+
+// ============ DEMANDAS ============
+export const demands = pgTable(
+  "demands",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    category: text("category").notNull(),
+    status: demandStatusEnum("status").notNull().default("pendente"),
+    priority: demandPriorityEnum("priority").notNull().default("media"),
+    voterId: integer("voter_id").references(() => voters.id).notNull(),
+    assignedTo: integer("assigned_to").references(() => users.id),
+    coordinatorId: integer("coordinator_id").references(() => users.id),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("demands_coord_idx").on(t.coordinatorId),
+    index("demands_creator_idx").on(t.createdBy),
+    index("demands_voter_idx").on(t.voterId),
+  ],
+);
+
+// ============ TAREFAS ============
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: taskStatusEnum("status").notNull().default("pendente"),
+    priority: demandPriorityEnum("priority").notNull().default("media"),
+    startDate: text("start_date"),        // DD/MM/AAAA
+    dueDate: text("due_date"),
+    assignedTo: integer("assigned_to").references(() => users.id),
+    coordinatorId: integer("coordinator_id").references(() => users.id),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("tasks_coord_idx").on(t.coordinatorId),
+    index("tasks_creator_idx").on(t.createdBy),
+  ],
+);
+
+// ============ EVENTOS ============
+export const events = pgTable(
+  "events",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    location: text("location"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    eventDate: text("event_date").notNull(),
+    status: eventStatusEnum("status").notNull().default("agendado"),
+    coordinatorId: integer("coordinator_id").references(() => users.id),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("events_coord_idx").on(t.coordinatorId),
+    index("events_creator_idx").on(t.createdBy),
+  ],
+);
+
+// ============ AUDITORIA ============
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: serial("id").primaryKey(),
+    actorId: integer("actor_id").references(() => users.id),
+    actorRole: userRoleEnum("actor_role"),
+    action: text("action").notNull(),
+    entity: text("entity"),
+    entityId: integer("entity_id"),
+    detail: text("detail"),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    success: boolean("success").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("audit_actor_idx").on(t.actorId),
+    index("audit_created_idx").on(t.createdAt),
+    index("audit_entity_idx").on(t.entity, t.entityId),
+  ],
+);

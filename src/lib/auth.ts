@@ -1,51 +1,96 @@
+import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import jwt from "jsonwebtoken";
-import { Role } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
 
-const JWT_SECRET = process.env.JWT_SECRET || "segredo_super_secreto_padrao";
-export const COOKIE_NAME = "auth_token";
+export type { Role };
 
-export interface SessionUser {
+// Se SESSION_SECRET não for definido, deriva do DATABASE_URL (estável entre restarts)
+const SECRET =
+  process.env.SESSION_SECRET ??
+  (process.env.DATABASE_URL
+    ? crypto.createHash("sha256").update(process.env.DATABASE_URL).digest("hex")
+    : "fallback-static-secret-please-set-SESSION_SECRET-in-production");
+
+const COOKIE = "cv_session";
+const TTL_HOURS = 8;
+
+export type SessionUser = {
   id: number;
-  email: string;
   name: string;
+  email: string;
   role: Role;
-  campaignId?: number | null;
-  coordinatorId?: number | null;
+  campaignId: number | null;
+  coordinatorId: number | null;
+};
+
+function sign(payload: string): string {
+  return crypto.createHmac("sha256", SECRET).update(payload).digest("hex");
 }
 
-export function verifyToken(token: string): SessionUser | null {
+export function hashPassword(plain: string): string {
+  return bcrypt.hashSync(plain, 12);
+}
+
+export function verifyPassword(plain: string, hash: string): boolean {
   try {
-    return jwt.verify(token, JWT_SECRET) as SessionUser;
+    return bcrypt.compareSync(plain, hash);
+  } catch {
+    return false;
+  }
+}
+
+export async function createSession(user: SessionUser) {
+  const exp = Date.now() + TTL_HOURS * 3600 * 1000;
+  const payload = Buffer.from(JSON.stringify({ ...user, exp })).toString("base64url");
+  const token = `${payload}.${sign(payload)}`;
+  const store = await cookies();
+  const isProd = process.env.NODE_ENV === "production";
+  store.set(COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProd,
+    maxAge: TTL_HOURS * 3600,
+    path: "/",
+  });
+}
+
+export async function getSession(): Promise<SessionUser | null> {
+  try {
+    const store = await cookies();
+    const token = store.get(COOKIE)?.value;
+    if (!token) return null;
+    const idx = token.lastIndexOf(".");
+    if (idx < 0) return null;
+    const payload = token.slice(0, idx);
+    const sig = token.slice(idx + 1);
+    if (!payload || !sig || sign(payload) !== sig) return null;
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as SessionUser & {
+      exp: number;
+    };
+    if (data.exp < Date.now()) return null;
+    return {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      campaignId: data.campaignId ?? null,
+      coordinatorId: data.coordinatorId ?? null,
+    };
   } catch {
     return null;
   }
 }
 
-export function createSession(user: SessionUser): string {
-  return jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
-}
-
 export async function clearSession() {
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, "", { maxAge: 0 });
+  const store = await cookies();
+  store.delete(COOKIE);
 }
 
-export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifyToken(token);
-}
-
-export function isAdmin(user: SessionUser | null): boolean {
-  return user?.role === "admin" || user?.role === "super_admin";
-}
-
-export function verifyPassword(password: string, hash: string): boolean {
-  return password === hash;
-}
-
-export function hashPassword(password: string): string {
-  return password;
+/**
+ * Utilitário para rotas API: valida sessão e retorna o usuário.
+ * Se não houver sessão, retorna null (a rota decide como responder).
+ */
+export async function requireSession(): Promise<SessionUser | null> {
+  return await getSession();
 }

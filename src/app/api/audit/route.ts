@@ -3,6 +3,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLogs, users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
+import { isPlatformStaff } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,17 +11,18 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
-  if (s.role !== "super_admin" && s.role !== "admin") return NextResponse.json({ error: "sem permissão" }, { status: 403 });
+  if (!isPlatformStaff(s.role)) return NextResponse.json({ error: "sem permissão" }, { status: 403 });
 
   const url = new URL(req.url);
-  const coordinatorFilter = url.searchParams.get("coordinatorId");
   const q = url.searchParams.get("q")?.trim();
+  const coordinatorFilter = url.searchParams.get("coordinatorId");
 
   const rows = await db
     .select({
       id: auditLogs.id, action: auditLogs.action,
       entity: auditLogs.entity, entityId: auditLogs.entityId,
       detail: auditLogs.detail, ip: auditLogs.ip,
+      success: auditLogs.success,
       createdAt: auditLogs.createdAt,
       actorId: auditLogs.actorId, actorName: users.name, actorEmail: users.email,
       actorRole: users.role, actorCoordinatorId: users.coordinatorId,
@@ -34,17 +36,16 @@ export async function GET(req: Request) {
   let filtered = rows;
   if (coordinatorFilter) {
     const cid = Number(coordinatorFilter);
-    // Ações executadas pelo próprio coord (actorId=cid) OU por leaders vinculados (actorCoordinatorId=cid)
     filtered = filtered.filter((r) => r.actorId === cid || r.actorCoordinatorId === cid);
   }
   if (q) {
-    const s = q.toLowerCase();
+    const ql = q.toLowerCase();
     filtered = filtered.filter((r) =>
-      (r.action ?? "").toLowerCase().includes(s) ||
-      (r.entity ?? "").toLowerCase().includes(s) ||
-      (r.detail ?? "").toLowerCase().includes(s) ||
-      (r.actorName ?? "").toLowerCase().includes(s) ||
-      (r.actorEmail ?? "").toLowerCase().includes(s),
+      (r.action ?? "").toLowerCase().includes(ql) ||
+      (r.entity ?? "").toLowerCase().includes(ql) ||
+      (r.detail ?? "").toLowerCase().includes(ql) ||
+      (r.actorName ?? "").toLowerCase().includes(ql) ||
+      (r.actorEmail ?? "").toLowerCase().includes(ql),
     );
   }
   return NextResponse.json({ logs: filtered });

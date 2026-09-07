@@ -1,54 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
+import { getSession, hashPassword } from "@/lib/auth";
+import { canResetPassword } from "@/lib/permissions";
+import { audit, ipOf } from "@/lib/audit";
 
-// Função auxiliar de permissão ou ajuste de tipo
-function checkPasswordPermission(callerRole: string, targetRole: string): boolean {
-  if (callerRole === "SUPER_ADMIN") return true;
-  if (callerRole === "ADMIN" && targetRole !== "SUPER_ADMIN") return true;
-  return false;
-}
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const userId = parseInt(id, 10);
-    const body = await request.json();
-    const { newPassword } = body;
-
-    if (!newPassword) {
-      return NextResponse.json({ error: "Nova senha não informada." }, { status: 400 });
-    }
-
-    const [target] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    if (!target) {
-      return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 });
-    }
-
-    // Aqui você pode validar a sessão do usuário chamador conforme sua implementação de auth
-    // Exemplo seguro simulando a checagem:
-    const callerRole = "SUPER_ADMIN"; // Ajuste conforme a sessão real do seu projeto
-
-    if (!checkPasswordPermission(callerRole, target.role || "USER")) {
-      return NextResponse.json({ error: "Sem permissão para redefinir esta senha." }, { status: 403 });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-    await db.update(users)
-      .set({ 
-        password: hashedPassword,
-        passwordHash: hashedPassword 
-      })
-      .where(eq(users.id, userId));
-
-    return NextResponse.json({ success: true, message: "Senha redefinida com sucesso." });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Erro interno no servidor." }, { status: 500 });
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
+  const { id } = await ctx.params;
+  const uid = Number(id);
+  if (!Number.isInteger(uid)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
+  const [target] = await db.select().from(users).where(eq(users.id, uid));
+  if (!target) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  if (!canResetPassword(s.role, target.role)) {
+    await audit({ actorId: s.id, actorRole: s.role, action: "password_reset_denied", entity: "users", entityId: uid, ip: ipOf(req), success: false });
+    return NextResponse.json({ error: "sem permissão" }, { status: 403 });
   }
+  const { newPassword } = (await req.json()) as { newPassword?: string };
+  if (!newPassword || newPassword.length < 6) {
+    return NextResponse.json({ error: "A senha deve ter ao menos 6 caracteres." }, { status: 400 });
+  }
+  await db.update(users).set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() }).where(eq(users.id, uid));
+  await audit({ actorId: s.id, actorRole: s.role, action: "password_reset", entity: "users", entityId: uid, detail: `Redefiniu senha de ${target.email}`, ip: ipOf(req) });
+  return NextResponse.json({ ok: true, message: `Senha de ${target.name} redefinida.` });
 }

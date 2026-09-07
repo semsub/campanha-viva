@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, ilike } from "drizzle-orm";
 import { db } from "@/db";
-import { demands, voters, users, auditLogs } from "@/db/schema";
+import { demands, voters, users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { canAccessRow, coordinatorScopeIdForUser, demandsVisibilityFilter } from "@/lib/scope";
+import { audit, ipOf } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+type Status = "pendente" | "em_andamento" | "concluido" | "cancelado";
 
 export async function GET(req: NextRequest) {
   const s = await getSession();
@@ -14,8 +17,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const category = url.searchParams.get("category");
-  const status = url.searchParams.get("status") as
-    | "aberta" | "em_andamento" | "resolvida" | "cancelada" | null;
+  const status = url.searchParams.get("status") as Status | null;
   const voterId = url.searchParams.get("voterId");
 
   const conds = [demandsVisibilityFilter(s)];
@@ -47,23 +49,18 @@ export async function POST(req: NextRequest) {
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
   const b = (await req.json()) as {
     title?: string; description?: string; category?: string;
-    priority?: "baixa"|"media"|"alta"|"urgente";
-    voterId?: number;
+    priority?: "baixa"|"media"|"alta"|"urgente"; voterId?: number;
   };
-  if (!b.title || !b.category) {
-    return NextResponse.json({ error: "título e categoria são obrigatórios" }, { status: 400 });
-  }
-  if (!b.voterId) {
-    return NextResponse.json({ error: "É obrigatório selecionar um eleitor" }, { status: 400 });
-  }
+  if (!b.title || !b.category) return NextResponse.json({ error: "título e categoria obrigatórios" }, { status: 400 });
+  if (!b.voterId) return NextResponse.json({ error: "eleitor obrigatório" }, { status: 400 });
 
-  // Verifica se o eleitor pertence ao escopo do usuário
+  // Autorização em nível de objeto: o eleitor precisa pertencer ao escopo
   const [v] = await db.select().from(voters).where(eq(voters.id, Number(b.voterId)));
-  if (!v) return NextResponse.json({ error: "eleitor não encontrado" }, { status: 404 });
+  if (!v) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
   if (!canAccessRow(s, { coordinatorId: v.coordinatorId, createdBy: v.createdBy, leaderId: v.leaderId })) {
-    return NextResponse.json({ error: "eleitor fora do seu escopo" }, { status: 403 });
+    await audit({ actorId: s.id, actorRole: s.role, action: "demand_create_denied", entity: "voters", entityId: v.id, ip: ipOf(req), success: false });
+    return NextResponse.json({ error: "não encontrado" }, { status: 404 });
   }
-
   const coordinatorId = v.coordinatorId ?? coordinatorScopeIdForUser(s);
 
   const [row] = await db.insert(demands).values({
@@ -71,15 +68,9 @@ export async function POST(req: NextRequest) {
     description: b.description ?? null,
     category: b.category,
     priority: b.priority ?? "media",
-    voterId: v.id,
-    coordinatorId,
-    createdBy: s.id,
+    voterId: v.id, coordinatorId, createdBy: s.id,
   }).returning({ id: demands.id });
 
-  await db.insert(auditLogs).values({
-    actorId: s.id, action: "demand_create", entity: "demands", entityId: row.id,
-    detail: `Criou demanda para eleitor #${v.id} (${v.name}): ${b.title}`,
-    ip: req.headers.get("x-forwarded-for"),
-  });
+  await audit({ actorId: s.id, actorRole: s.role, action: "demand_create", entity: "demands", entityId: row.id, detail: `Demanda p/ eleitor #${v.id}: ${b.title}`, ip: ipOf(req) });
   return NextResponse.json({ ok: true, id: row.id });
 }

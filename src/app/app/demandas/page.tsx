@@ -11,21 +11,17 @@ type Demand = {
   voterId: number | null; voterName: string | null;
   createdAt: string;
 };
-
 type Voter = { id: number; name: string };
 
 const statusColor: Record<string, string> = {
-  aberta: "yellow", em_andamento: "blue", resolvida: "green", cancelada: "red",
+  pendente: "yellow", em_andamento: "blue", concluido: "green", cancelado: "red",
 };
-const priorityColor: Record<string, string> = {
-  baixa: "slate", media: "blue", alta: "orange", urgente: "red",
+const statusLabel: Record<string, string> = {
+  pendente: "Pendente", em_andamento: "Em Andamento", concluido: "Concluído", cancelado: "Cancelado",
 };
+const priorityColor: Record<string, string> = { baixa: "slate", media: "blue", alta: "orange", urgente: "red" };
 
-const emptyForm = {
-  title: "", description: "", category: "saude",
-  priority: "media" as "baixa"|"media"|"alta"|"urgente",
-  voterId: "",
-};
+const emptyForm = { title: "", description: "", category: "saude", priority: "media" as "baixa"|"media"|"alta"|"urgente", voterId: "" };
 
 export default function DemandasPage() {
   const [rows, setRows] = useState<Demand[]>([]);
@@ -42,25 +38,16 @@ export default function DemandasPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (fCat) params.set("category", fCat);
-    if (fStatus) params.set("status", fStatus);
-    const r = await fetch(`/api/demands?${params}`);
+    const p = new URLSearchParams();
+    if (q) p.set("q", q); if (fCat) p.set("category", fCat); if (fStatus) p.set("status", fStatus);
+    const r = await fetch(`/api/demands?${p}`);
     const d = await r.json();
-    setRows(d.demands ?? []);
-    setLoading(false);
+    setRows(d.demands ?? []); setLoading(false);
   }, [q, fCat, fStatus]);
-
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch("/api/voters").then((r) => r.json()).then((d) => setVoters(d.voters ?? [])); }, []);
 
-  useEffect(() => {
-    fetch("/api/voters").then((r) => r.json()).then((d) => setVoters(d.voters ?? []));
-  }, []);
-
-  function openNew() {
-    setEditing(null); setForm(emptyForm); setError(null); setOpenModal(true);
-  }
+  function openNew() { setEditing(null); setForm(emptyForm); setError(null); setOpenModal(true); }
   function openEdit(d: Demand) {
     setEditing(d);
     setForm({
@@ -78,15 +65,10 @@ export default function DemandasPage() {
       const url = editing ? `/api/demands/${editing.id}` : "/api/demands";
       const body: Record<string, unknown> = { ...form };
       if (!editing) {
-        if (!form.voterId) { setError("Selecione um eleitor"); setSaving(false); return; }
+        if (!form.voterId) { setError("Selecione o eleitor"); setSaving(false); return; }
         body.voterId = Number(form.voterId);
-      } else {
-        delete body.voterId; // não permite trocar eleitor de uma demanda existente
-      }
-      const res = await fetch(url, {
-        method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      } else { delete body.voterId; }
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "falha");
       setOpenModal(false); await load();
@@ -96,15 +78,11 @@ export default function DemandasPage() {
   }
 
   async function setStatus(d: Demand, status: string) {
-    await fetch(`/api/demands/${d.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    await fetch(`/api/demands/${d.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     load();
   }
-
   async function del(d: Demand) {
-    if (!confirm(`Excluir demanda "${d.title}"?`)) return;
+    if (!confirm(`Excluir "${d.title}"?`)) return;
     const r = await fetch(`/api/demands/${d.id}`, { method: "DELETE" });
     if (r.ok) load(); else { const j = await r.json(); alert(j.error); }
   }
@@ -123,19 +101,17 @@ export default function DemandasPage() {
           </Select>
           <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
             <option value="">Todos os status</option>
-            <option value="aberta">Aberta</option>
+            <option value="pendente">Pendente</option>
             <option value="em_andamento">Em andamento</option>
-            <option value="resolvida">Resolvida</option>
-            <option value="cancelada">Cancelada</option>
+            <option value="concluido">Concluído</option>
+            <option value="cancelado">Cancelado</option>
           </Select>
         </div>
       </Card>
 
-      {loading ? (
-        <Card className="p-8 text-center text-slate-400">Carregando…</Card>
-      ) : rows.length === 0 ? (
-        <Card><EmptyState title="Nenhuma demanda" hint="Clique em '+ Nova demanda'." /></Card>
-      ) : (
+      {loading ? (<Card className="p-8 text-center text-slate-400">Carregando…</Card>)
+      : rows.length === 0 ? (<Card><EmptyState title="Nenhuma demanda" hint="Clique em '+ Nova demanda'." /></Card>)
+      : (
         <div className="grid gap-3">
           {rows.map((d) => {
             const cat = getCategory(d.category);
@@ -151,8 +127,8 @@ export default function DemandasPage() {
                         <h3 className="font-bold text-[#003B6F]">{d.title}</h3>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
                           <Badge color="slate">{cat.label}</Badge>
-                          <Badge color={statusColor[d.status]}>{d.status.replace("_", " ")}</Badge>
-                          <Badge color={priorityColor[d.priority]}>{d.priority}</Badge>
+                          <Badge color={statusColor[d.status] ?? "slate"}>{statusLabel[d.status] ?? d.status}</Badge>
+                          <Badge color={priorityColor[d.priority] ?? "slate"}>{d.priority}</Badge>
                           {d.voterName && (
                             <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded font-semibold">
                               👤 {d.voterName}
@@ -165,8 +141,8 @@ export default function DemandasPage() {
                     {d.description && <p className="text-sm text-slate-600 mt-2">{d.description}</p>}
                     <div className="flex flex-wrap gap-2 mt-3">
                       {d.status !== "em_andamento" && <button onClick={() => setStatus(d, "em_andamento")} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-semibold">▶ Iniciar</button>}
-                      {d.status !== "resolvida" && <button onClick={() => setStatus(d, "resolvida")} className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-semibold">✓ Resolver</button>}
-                      {d.status !== "cancelada" && <button onClick={() => setStatus(d, "cancelada")} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-semibold">✗ Cancelar</button>}
+                      {d.status !== "concluido" && <button onClick={() => setStatus(d, "concluido")} className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-semibold">✓ Concluir</button>}
+                      {d.status !== "cancelado" && <button onClick={() => setStatus(d, "cancelado")} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-semibold">✗ Cancelar</button>}
                       <button onClick={() => openEdit(d)} className="text-xs text-[#003B6F] font-semibold ml-auto">Editar</button>
                       <button onClick={() => del(d)} className="text-xs text-red-600 font-semibold">Excluir</button>
                     </div>
@@ -186,16 +162,9 @@ export default function DemandasPage() {
                 <option value="">— selecione o eleitor —</option>
                 {voters.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </Select>
-              {voters.length === 0 && (
-                <div className="text-xs text-orange-600 mt-1">
-                  ⚠️ Nenhum eleitor cadastrado. Cadastre um em &quot;Eleitores&quot; primeiro.
-                </div>
-              )}
             </Field>
           )}
-          <Field label="Título *">
-            <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </Field>
+          <Field label="Título *"><Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Categoria *">
               <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
@@ -204,16 +173,11 @@ export default function DemandasPage() {
             </Field>
             <Field label="Prioridade">
               <Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as "baixa"|"media"|"alta"|"urgente" })}>
-                <option value="baixa">Baixa</option>
-                <option value="media">Média</option>
-                <option value="alta">Alta</option>
-                <option value="urgente">Urgente</option>
+                <option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option>
               </Select>
             </Field>
           </div>
-          <Field label="Descrição">
-            <Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </Field>
+          <Field label="Descrição"><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <Btn variant="ghost" onClick={() => setOpenModal(false)}>Cancelar</Btn>

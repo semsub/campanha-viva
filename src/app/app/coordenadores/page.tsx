@@ -8,7 +8,7 @@ import { getCategory } from "@/lib/categories";
 type CoordReport = {
   id: number; name: string; email: string; active: boolean; territory: string | null;
   leaders: number; voters: number; demands: number;
-  openDemands: number; resolvedDemands: number;
+  pendingDemands: number; doneDemands: number;
 };
 type FullReport = {
   coordinators: CoordReport[];
@@ -79,8 +79,8 @@ export default function CoordenadoresPage() {
                   <StatBox label="Demandas" value={c.demands} />
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-2">
-                  <StatBox label="Abertas" value={c.openDemands} color="orange" />
-                  <StatBox label="Resolvidas" value={c.resolvedDemands} color="green" />
+                  <StatBox label="Pendentes" value={c.pendingDemands} color="orange" />
+                  <StatBox label="Concluídas" value={c.doneDemands} color="green" />
                 </div>
                 <Btn className="mt-4 w-full" onClick={() => openDetail(c.id)}>🔎 Ver detalhes deste coordenador</Btn>
               </Card>

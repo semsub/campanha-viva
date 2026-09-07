@@ -92,7 +92,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: "admin@campanhaviva.com.br",
-          password: "Admin@2026",
+          password: "230808Deus#",
           name: "Junior Araujo",
         }),
       });

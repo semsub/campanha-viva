@@ -2,19 +2,18 @@
   "name": "nextjs-postgresql-template",
   "private": true,
   "scripts": {
-    "dev": "node --env-file=.env node_modules/next/dist/bin/next dev",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "seed": "node --env-file=.env scripts/seed-super-admin.mjs",
+    "seed": "node scripts/seed-super-admin.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
-    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.31.0",
     "next": "16.2.6",
     "pg": "8.20.0",
@@ -24,7 +23,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "22.19.15",
     "@types/pg": "8.18.0",
     "@types/react": "19.2.14",

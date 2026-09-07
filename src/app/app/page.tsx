@@ -8,7 +8,7 @@ import { ROLE_LABELS } from "@/lib/permissions";
 
 type Stats = {
   users: number; voters: number; demands: number;
-  openDemands: number; resolvedDemands: number;
+  pendingDemands: number; doneDemands: number;
   tasks: number; openTasks: number; events: number;
 };
 
@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const cards = [
     { label: "Eleitores", value: d?.stats.voters ?? 0, icon: "🧑‍🤝‍🧑", color: "from-emerald-500 to-emerald-600", href: "/app/eleitores" },
     { label: "Demandas", value: d?.stats.demands ?? 0, icon: "📋", color: "from-blue-500 to-blue-600", href: "/app/demandas" },
-    { label: "Demandas Abertas", value: d?.stats.openDemands ?? 0, icon: "🔓", color: "from-orange-500 to-orange-600", href: "/app/demandas" },
+    { label: "Demandas Pendentes", value: d?.stats.pendingDemands ?? 0, icon: "🔓", color: "from-orange-500 to-orange-600", href: "/app/demandas" },
     { label: "Tarefas Pendentes", value: d?.stats.openTasks ?? 0, icon: "✅", color: "from-purple-500 to-purple-600", href: "/app/tarefas" },
     { label: "Eventos", value: d?.stats.events ?? 0, icon: "📅", color: "from-pink-500 to-pink-600", href: "/app/eventos" },
     { label: "Usuários", value: d?.stats.users ?? 0, icon: "👥", color: "from-slate-600 to-slate-800", href: "/app/usuarios" },

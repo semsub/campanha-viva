@@ -3,25 +3,25 @@
 import { useEffect, useState, useCallback } from "react";
 import { Btn, Card, Modal, PageHeader, Field, Input, Select, Textarea, EmptyState, Badge } from "@/components/UI";
 import { formatDate } from "@/lib/format";
-import { maskPhone, maskVoterTitle, maskDate, maskDigits } from "@/lib/masks";
+import { maskPhone, maskVoterTitle, maskDate, maskZone, maskSection } from "@/lib/masks";
 import { DEMAND_CATEGORIES, getCategory } from "@/lib/categories";
 
 type Voter = {
-  id: number; name: string; phone: string | null; voterTitle: string | null;
-  zone: string | null; section: string | null;
+  id: number; name: string; phone: string | null;
+  voterTitle: string | null; zone: string | null; section: string | null;
   street: string | null; number: string | null;
-  neighborhood: string | null; city: string | null;
+  neighborhood: string | null; city: string | null; uf: string | null;
   birthDate: string | null; notes: string | null;
   leaderName: string | null; leaderId: number | null; createdAt: string;
 };
 type UserOpt = { id: number; name: string; email: string; role: string };
 type Demand = { id: number; title: string; category: string; status: string; priority: string; createdAt: string };
-type Me = { id: number; role: "super_admin" | "coordinator" | "leader" };
+type Me = { id: number; role: "super_admin"|"admin"|"coordinator"|"leader" };
 
 const emptyForm = {
   name: "", phone: "", voterTitle: "",
   zone: "", section: "",
-  street: "", number: "", neighborhood: "", city: "",
+  street: "", number: "", neighborhood: "", city: "", uf: "",
   birthDate: "", notes: "", leaderId: "",
 };
 
@@ -58,23 +58,18 @@ export default function EleitoresPage() {
   }, [q]);
   useEffect(() => { load(); }, [load]);
 
-  function openNew() {
-    setEditing(null); setForm(emptyForm); setError(null); setOpenModal(true);
-  }
+  const isLeader = me?.role === "leader";
+  const canSeeSensitive = !isLeader;
+
+  function openNew() { setEditing(null); setForm(emptyForm); setError(null); setOpenModal(true); }
   function openEdit(v: Voter) {
     setEditing(v);
     setForm({
-      name: v.name,
-      phone: v.phone ?? "",
-      voterTitle: v.voterTitle ?? "",
-      zone: v.zone ?? "",
-      section: v.section ?? "",
-      street: v.street ?? "",
-      number: v.number ?? "",
-      neighborhood: v.neighborhood ?? "",
-      city: v.city ?? "",
-      birthDate: v.birthDate ?? "",
-      notes: v.notes ?? "",
+      name: v.name, phone: v.phone ?? "",
+      voterTitle: v.voterTitle ?? "", zone: v.zone ?? "", section: v.section ?? "",
+      street: v.street ?? "", number: v.number ?? "",
+      neighborhood: v.neighborhood ?? "", city: v.city ?? "", uf: v.uf ?? "",
+      birthDate: v.birthDate ?? "", notes: v.notes ?? "",
       leaderId: v.leaderId ? String(v.leaderId) : "",
     });
     setError(null); setOpenModal(true);
@@ -87,12 +82,10 @@ export default function EleitoresPage() {
       const method = editing ? "PATCH" : "POST";
       const url = editing ? `/api/voters/${editing.id}` : "/api/voters";
       const body: Record<string, unknown> = { ...form };
-      if (form.leaderId) body.leaderId = Number(form.leaderId);
-      else delete body.leaderId;
-      const res = await fetch(url, {
-        method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      if (form.leaderId) body.leaderId = Number(form.leaderId); else delete body.leaderId;
+      // Se leader, não envia campos sensíveis
+      if (isLeader) { delete body.voterTitle; delete body.zone; delete body.section; }
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "falha ao salvar");
       setOpenModal(false); await load();
@@ -118,10 +111,7 @@ export default function EleitoresPage() {
     e.preventDefault();
     if (!viewingVoter) return;
     setSavingDemand(true);
-    const res = await fetch("/api/demands", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...newDemand, voterId: viewingVoter.id }),
-    });
+    const res = await fetch("/api/demands", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...newDemand, voterId: viewingVoter.id }) });
     setSavingDemand(false);
     if (!res.ok) { const d = await res.json(); alert(d.error); return; }
     setNewDemand({ title: "", category: "saude", priority: "media", description: "" });
@@ -129,7 +119,7 @@ export default function EleitoresPage() {
     setVoterDemands(d.demands ?? []);
   }
 
-  const canManage = me?.role !== "leader";
+  const canManage = me?.role !== "leader" || true; // leader pode editar/excluir os próprios
 
   return (
     <div>
@@ -137,14 +127,21 @@ export default function EleitoresPage() {
         title="Eleitores"
         subtitle={
           me?.role === "super_admin" ? `${rows.length} eleitor(es) — visão total`
+          : me?.role === "admin" ? `${rows.length} eleitor(es) — moderação global`
           : me?.role === "coordinator" ? `${rows.length} eleitor(es) — seu escopo`
           : `${rows.length} eleitor(es) — seus cadastros`
         }
         actions={<Btn onClick={openNew}>+ Novo eleitor</Btn>}
       />
 
+      {isLeader && (
+        <Card className="p-3 mb-4 bg-orange-50 border-orange-200 text-orange-800 text-xs">
+          🔒 Como Liderança, os campos <b>Título Eleitoral</b>, <b>Zona</b> e <b>Seção</b> não são exibidos.
+        </Card>
+      )}
+
       <Card className="p-4 mb-4">
-        <Input placeholder="Buscar por nome, telefone, título, bairro ou cidade…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input placeholder={isLeader ? "Buscar por nome, telefone, bairro ou cidade…" : "Buscar por nome, telefone, título, bairro ou cidade…"} value={q} onChange={(e) => setQ(e.target.value)} />
       </Card>
 
       <Card className="overflow-hidden">
@@ -159,8 +156,8 @@ export default function EleitoresPage() {
                 <tr>
                   <th className="text-left px-4 py-3">Nome</th>
                   <th className="text-left px-4 py-3">Contato</th>
-                  <th className="text-left px-4 py-3">Título</th>
-                  <th className="text-left px-4 py-3">Zona/Seção</th>
+                  {canSeeSensitive && <th className="text-left px-4 py-3">Título</th>}
+                  {canSeeSensitive && <th className="text-left px-4 py-3">Zona/Seção</th>}
                   <th className="text-left px-4 py-3">Bairro/Cidade</th>
                   <th className="text-left px-4 py-3">Liderança</th>
                   <th className="text-right px-4 py-3">Ações</th>
@@ -171,13 +168,13 @@ export default function EleitoresPage() {
                   <tr key={v.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-semibold text-[#003B6F]">{v.name}</td>
                     <td className="px-4 py-3">{v.phone ?? "-"}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{v.voterTitle ?? "-"}</td>
-                    <td className="px-4 py-3 text-xs">
-                      {v.zone ? `Z${v.zone}` : "-"} {v.section ? `/ S${v.section}` : ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      {v.neighborhood ?? "-"}{v.city ? ` • ${v.city}` : ""}
-                    </td>
+                    {canSeeSensitive && <td className="px-4 py-3 font-mono text-xs">{v.voterTitle ?? "-"}</td>}
+                    {canSeeSensitive && (
+                      <td className="px-4 py-3 text-xs">
+                        {v.zone ? `Z${v.zone}` : "-"}{v.section ? `/S${v.section}` : ""}
+                      </td>
+                    )}
+                    <td className="px-4 py-3">{v.neighborhood ?? "-"}{v.city ? ` • ${v.city}` : ""}</td>
                     <td className="px-4 py-3">{v.leaderName ?? <Badge color="slate">-</Badge>}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button className="text-orange-600 font-semibold mr-3" onClick={() => openHistory(v)}>Histórico</button>
@@ -198,49 +195,46 @@ export default function EleitoresPage() {
 
       <Modal open={openModal} onClose={() => setOpenModal(false)} title={editing ? "Editar eleitor" : "Novo eleitor"}>
         <form onSubmit={save} className="space-y-3">
-          <Field label="Nome *">
+          <Field label="Nome completo *">
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Contato">
-              <Input
-                inputMode="numeric"
-                placeholder="(00) 00000-0000"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })}
-              />
+              <Input inputMode="numeric" placeholder="(00) 00000-0000"
+                value={form.phone} onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })} />
             </Field>
-            <Field label="Título eleitoral">
-              <Input
-                inputMode="numeric"
-                placeholder="0000 0000 0000"
-                value={form.voterTitle}
-                onChange={(e) => setForm({ ...form, voterTitle: maskVoterTitle(e.target.value) })}
-              />
-            </Field>
+            {canSeeSensitive && (
+              <Field label="Título eleitoral">
+                <Input inputMode="numeric" placeholder="0000 0000 0000"
+                  value={form.voterTitle}
+                  onChange={(e) => setForm({ ...form, voterTitle: maskVoterTitle(e.target.value) })} />
+              </Field>
+            )}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Zona">
-              <Input inputMode="numeric" placeholder="Ex: 032"
-                value={form.zone}
-                onChange={(e) => setForm({ ...form, zone: maskDigits(e.target.value, 4) })}
-              />
-            </Field>
-            <Field label="Seção">
-              <Input inputMode="numeric" placeholder="Ex: 0451"
-                value={form.section}
-                onChange={(e) => setForm({ ...form, section: maskDigits(e.target.value, 5) })}
-              />
-            </Field>
+          {canSeeSensitive && (
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Zona">
+                <Input inputMode="numeric" placeholder="0000"
+                  value={form.zone} onChange={(e) => setForm({ ...form, zone: maskZone(e.target.value) })} />
+              </Field>
+              <Field label="Seção">
+                <Input inputMode="numeric" placeholder="0000"
+                  value={form.section} onChange={(e) => setForm({ ...form, section: maskSection(e.target.value) })} />
+              </Field>
+              <Field label="Nascimento">
+                <Input inputMode="numeric" placeholder="DD/MM/AAAA"
+                  value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: maskDate(e.target.value) })} />
+              </Field>
+            </div>
+          )}
+          {!canSeeSensitive && (
             <Field label="Nascimento">
               <Input inputMode="numeric" placeholder="DD/MM/AAAA"
-                value={form.birthDate}
-                onChange={(e) => setForm({ ...form, birthDate: maskDate(e.target.value) })}
-              />
+                value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: maskDate(e.target.value) })} />
             </Field>
-          </div>
+          )}
 
           <div className="pt-2 border-t border-slate-100">
             <div className="text-xs font-bold text-[#003B6F] mb-2 uppercase tracking-wider">Endereço</div>
@@ -254,17 +248,20 @@ export default function EleitoresPage() {
                 <Input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-3 gap-3 mt-3">
               <Field label="Bairro">
                 <Input value={form.neighborhood} onChange={(e) => setForm({ ...form, neighborhood: e.target.value })} />
               </Field>
               <Field label="Município">
                 <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
               </Field>
+              <Field label="UF">
+                <Input value={form.uf} maxLength={2} onChange={(e) => setForm({ ...form, uf: e.target.value.toUpperCase().slice(0,2) })} />
+              </Field>
             </div>
           </div>
 
-          {(me?.role === "coordinator" || me?.role === "super_admin") && !editing && (
+          {(me?.role === "coordinator" || me?.role === "super_admin" || me?.role === "admin") && !editing && (
             <Field label="Vincular à liderança (opcional)">
               <Select value={form.leaderId} onChange={(e) => setForm({ ...form, leaderId: e.target.value })}>
                 <option value="">— nenhuma —</option>
@@ -285,23 +282,17 @@ export default function EleitoresPage() {
         </form>
       </Modal>
 
-      <Modal
-        open={!!viewingVoter}
-        onClose={() => setViewingVoter(null)}
-        title={viewingVoter ? `Histórico — ${viewingVoter.name}` : ""}
-      >
+      <Modal open={!!viewingVoter} onClose={() => setViewingVoter(null)} title={viewingVoter ? `Histórico — ${viewingVoter.name}` : ""}>
         <div className="space-y-4">
           {viewingVoter && (
             <div className="bg-slate-50 rounded-lg p-3 text-xs space-y-1">
               <div><b>Contato:</b> {viewingVoter.phone ?? "-"}</div>
-              <div><b>Título:</b> <span className="font-mono">{viewingVoter.voterTitle ?? "-"}</span></div>
-              <div>
-                <b>Zona/Seção:</b> {viewingVoter.zone ? `Z${viewingVoter.zone}` : "-"} {viewingVoter.section ? `/ S${viewingVoter.section}` : ""}
-              </div>
+              {canSeeSensitive && <div><b>Título:</b> <span className="font-mono">{viewingVoter.voterTitle ?? "-"}</span></div>}
+              {canSeeSensitive && <div><b>Zona/Seção:</b> {viewingVoter.zone ? `Z${viewingVoter.zone}` : "-"} {viewingVoter.section ? `/ S${viewingVoter.section}` : ""}</div>}
               <div>
                 <b>Endereço:</b> {viewingVoter.street ?? "-"}{viewingVoter.number ? `, ${viewingVoter.number}` : ""}
                 {viewingVoter.neighborhood ? ` — ${viewingVoter.neighborhood}` : ""}
-                {viewingVoter.city ? ` (${viewingVoter.city})` : ""}
+                {viewingVoter.city ? ` (${viewingVoter.city}${viewingVoter.uf ? `/${viewingVoter.uf}` : ""})` : ""}
               </div>
               <div><b>Nascimento:</b> {viewingVoter.birthDate ?? "-"}</div>
             </div>
