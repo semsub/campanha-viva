@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { events } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { canAccessRow } from "@/lib/scope";
+import { canWriteRow } from "@/lib/scope";
 import { audit, ipOf } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const eid = Number(id);
   const e = await load(eid);
   if (!e) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
-  if (!canAccessRow(s, { coordinatorId: e.coordinatorId, createdBy: e.createdBy })) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  if (!canWriteRow(s, { coordinatorId: e.coordinatorId, createdBy: e.createdBy })) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
   const b = (await req.json()) as Record<string, unknown>;
   const patch: Record<string, unknown> = {};
   for (const k of ["title","description","location","eventDate","status"] as const) if (b[k] !== undefined) patch[k] = b[k];
@@ -37,7 +37,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const eid = Number(id);
   const e = await load(eid);
   if (!e) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
-  if (!canAccessRow(s, { coordinatorId: e.coordinatorId, createdBy: e.createdBy })) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  if (!canWriteRow(s, { coordinatorId: e.coordinatorId, createdBy: e.createdBy })) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
   await db.delete(events).where(eq(events.id, eid));
   await audit({ actorId: s.id, actorRole: s.role, action: "event_delete", entity: "events", entityId: eid, ip: ipOf(req) });
   return NextResponse.json({ ok: true });
