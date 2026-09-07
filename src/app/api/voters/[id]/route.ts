@@ -26,9 +26,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
   const b = (await req.json()) as Record<string, unknown>;
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const k of ["name","phone","street","number","neighborhood","city","birthDate","notes"] as const) if (b[k] !== undefined) patch[k] = b[k];
-  if (s.role !== "leader") {
-    for (const k of ["voterTitle","zone","section"] as const) if (b[k] !== undefined) patch[k] = b[k];
+  // Leader agora pode gravar todos os campos (mas só vê nome/telefone depois de salvo)
+  for (const k of ["name","phone","voterTitle","zone","section","street","number","neighborhood","city","birthDate","notes"] as const) {
+    if (b[k] !== undefined) patch[k] = b[k];
   }
   await db.update(voters).set(patch).where(eq(voters.id, vid));
   await audit({ actorId: s.id, actorRole: s.role, action: "voter_update", entity: "voters", entityId: vid, ip: ipOf(req) });

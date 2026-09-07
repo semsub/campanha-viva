@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import { voters, users } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { coordinatorScopeIdForUser, votersVisibilityFilter } from "@/lib/scope";
-import { canSeeVoterSensitive } from "@/lib/permissions";
 import { audit, ipOf } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -18,24 +18,49 @@ type Row = {
   birthDate: string | null; notes: string | null;
   leaderId: number | null; leaderName: string | null;
   coordinatorId: number | null; createdBy: number;
+  createdByName: string | null;
   createdAt: Date;
 };
 
-const sanitize = (rows: Row[], canSee: boolean): Row[] =>
-  canSee ? rows : rows.map((r) => ({ ...r, voterTitle: null, zone: null, section: null }));
+/**
+ * Para LEADER: retorna APENAS nome e telefone (todos os demais campos vêm null).
+ * Regra de negócio: leader cadastra tudo, mas depois de salvo só vê nome/telefone.
+ * Para SUPER/ADMIN e COORDINATOR: retorna tudo, inclusive quem cadastrou.
+ */
+const sanitize = (rows: Row[], role: "super_admin" | "admin" | "coordinator" | "leader"): Row[] => {
+  if (role !== "leader") return rows;
+  return rows.map((r) => ({
+    ...r,
+    voterTitle: null,
+    zone: null,
+    section: null,
+    street: null,
+    number: null,
+    neighborhood: null,
+    city: null,
+    birthDate: null,
+    notes: null,
+    leaderName: null,
+    createdByName: null,
+  }));
+};
 
 export async function GET(req: NextRequest) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
   const q = new URL(req.url).searchParams.get("q")?.trim();
-  const canSee = canSeeVoterSensitive(s.role);
+  const isLeader = s.role === "leader";
   const f = votersVisibilityFilter(s);
+  // Para leader, a busca só nos campos que ele pode ver (nome/telefone)
   const search = q
-    ? canSee
-      ? or(ilike(voters.name, `%${q}%`), ilike(voters.phone, `%${q}%`), ilike(voters.voterTitle, `%${q}%`), ilike(voters.neighborhood, `%${q}%`), ilike(voters.city, `%${q}%`))
-      : or(ilike(voters.name, `%${q}%`), ilike(voters.phone, `%${q}%`), ilike(voters.neighborhood, `%${q}%`), ilike(voters.city, `%${q}%`))
+    ? isLeader
+      ? or(ilike(voters.name, `%${q}%`), ilike(voters.phone, `%${q}%`))
+      : or(ilike(voters.name, `%${q}%`), ilike(voters.phone, `%${q}%`), ilike(voters.voterTitle, `%${q}%`), ilike(voters.neighborhood, `%${q}%`), ilike(voters.city, `%${q}%`))
     : undefined;
   const where = search ? and(f, search)! : f;
+
+  // Usamos alias para trazer o NOME de QUEM CADASTROU (createdBy) — importante para o coordenador saber
+  const creator = alias(users, "creator");
 
   const rows = await db.select({
     id: voters.id, name: voters.name, phone: voters.phone,
@@ -45,14 +70,16 @@ export async function GET(req: NextRequest) {
     birthDate: voters.birthDate, notes: voters.notes,
     leaderId: voters.leaderId, leaderName: users.name,
     coordinatorId: voters.coordinatorId, createdBy: voters.createdBy,
+    createdByName: creator.name,
     createdAt: voters.createdAt,
   })
     .from(voters)
     .leftJoin(users, eq(voters.leaderId, users.id))
+    .leftJoin(creator, eq(voters.createdBy, creator.id))
     .where(where)
     .orderBy(desc(voters.createdAt))
     .limit(500);
-  return NextResponse.json({ voters: sanitize(rows, canSee) });
+  return NextResponse.json({ voters: sanitize(rows, s.role) });
 }
 
 export async function POST(req: NextRequest) {
@@ -66,8 +93,8 @@ export async function POST(req: NextRequest) {
   };
   if (!b.name) return NextResponse.json({ error: "nome obrigatório" }, { status: 400 });
 
-  // Sanitiza no servidor — leader NUNCA grava campos sensíveis
-  if (s.role === "leader") { b.voterTitle = undefined; b.zone = undefined; b.section = undefined; }
+  // Leader PODE cadastrar todos os campos (incluindo Título/Zona/Seção).
+  // Depois de salvo, ao LISTAR, esses campos não são exibidos para ele — mas ficam salvos.
 
   let leaderId: number | null = null;
   let coordinatorId: number | null = null;
