@@ -36,8 +36,13 @@ export default function UsuariosPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const d = await fetch(`/api/users?q=${encodeURIComponent(q)}`).then((r) => r.json());
-    setRows(d.users ?? []); setLoading(false);
+    try {
+      const r = await fetch(`/api/users?q=${encodeURIComponent(q)}`, { credentials: "include" });
+      if (r.status === 401) { window.location.href = "/login"; return; }
+      const d = await r.json().catch(() => ({ users: [] }));
+      setRows(d.users ?? []);
+    } catch { /* silencia */ }
+    finally { setLoading(false); }
   }, [q]);
   useEffect(() => { load(); }, [load]);
 
@@ -70,17 +75,30 @@ export default function UsuariosPage() {
   }
 
   async function toggle(u: U) {
-    const r = await fetch(`/api/users/${u.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !u.active }),
-    });
-    if (r.ok) load(); else { const d = await r.json(); alert(d.error); }
+    try {
+      const r = await fetch(`/api/users/${u.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !u.active }),
+      });
+      if (r.status === 401) { alert("Sessão expirou. Faça login novamente."); window.location.href = "/login"; return; }
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) load();
+      else alert(d.error ?? `Erro ${r.status}`);
+    } catch (e) { alert(e instanceof Error ? e.message : "erro de rede"); }
   }
 
   async function del(u: U) {
     if (!confirm(`Excluir usuário ${u.name}? Esta ação é irreversível.`)) return;
-    const r = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
-    if (r.ok) load(); else { const d = await r.json(); alert(d.error); }
+    if (u.id === me?.id) { alert("Você não pode excluir a si mesmo."); return; }
+    try {
+      const r = await fetch(`/api/users/${u.id}`, { method: "DELETE", credentials: "include" });
+      if (r.status === 401) { alert("Sessão expirou. Faça login novamente."); window.location.href = "/login"; return; }
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) load();
+      else alert(d.error ?? `Erro ${r.status} ao excluir`);
+    } catch (e) { alert(e instanceof Error ? e.message : "erro de rede"); }
   }
 
   async function changePw(e: React.FormEvent) {
