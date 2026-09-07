@@ -120,6 +120,21 @@ async function runMigrations() {
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS users_coord_idx ON users(coordinator_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS users_manager_idx ON users(manager_id);`);
+  // Migração incremental: adiciona colunas que podem faltar em bases antigas
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='campaign_id')
+        THEN ALTER TABLE users ADD COLUMN campaign_id INTEGER REFERENCES campaigns(id); END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='last_login_at')
+        THEN ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='manager_id')
+        THEN ALTER TABLE users ADD COLUMN manager_id INTEGER; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='coordinator_id')
+        THEN ALTER TABLE users ADD COLUMN coordinator_id INTEGER; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='territory')
+        THEN ALTER TABLE users ADD COLUMN territory TEXT; END IF;
+    END $$;
+  `);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS municipalities (
     id SERIAL PRIMARY KEY, name TEXT NOT NULL, uf TEXT,
@@ -153,6 +168,29 @@ async function runMigrations() {
   await pool.query(`CREATE INDEX IF NOT EXISTS voters_coord_idx ON voters(coordinator_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS voters_leader_idx ON voters(leader_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS voters_creator_idx ON voters(created_by);`);
+  // Migração incremental — adiciona colunas novas de voters se faltarem
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='campaign_id')
+        THEN ALTER TABLE voters ADD COLUMN campaign_id INTEGER REFERENCES campaigns(id); END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='voter_title')
+        THEN ALTER TABLE voters ADD COLUMN voter_title TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='zone')
+        THEN ALTER TABLE voters ADD COLUMN zone TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='section')
+        THEN ALTER TABLE voters ADD COLUMN section TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='street')
+        THEN ALTER TABLE voters ADD COLUMN street TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='number')
+        THEN ALTER TABLE voters ADD COLUMN number TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='uf')
+        THEN ALTER TABLE voters ADD COLUMN uf TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='coordinator_id')
+        THEN ALTER TABLE voters ADD COLUMN coordinator_id INTEGER REFERENCES users(id); END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='voters' AND column_name='created_by')
+        THEN ALTER TABLE voters ADD COLUMN created_by INTEGER REFERENCES users(id); END IF;
+    END $$;
+  `);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS demands (
     id SERIAL PRIMARY KEY,
@@ -183,6 +221,18 @@ async function runMigrations() {
   );`);
   await pool.query(`CREATE INDEX IF NOT EXISTS tasks_coord_idx ON tasks(coordinator_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS tasks_creator_idx ON tasks(created_by);`);
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='start_date')
+        THEN ALTER TABLE tasks ADD COLUMN start_date TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='priority')
+        THEN ALTER TABLE tasks ADD COLUMN priority demand_priority NOT NULL DEFAULT 'media'; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='coordinator_id')
+        THEN ALTER TABLE tasks ADD COLUMN coordinator_id INTEGER REFERENCES users(id); END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='updated_at')
+        THEN ALTER TABLE tasks ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT NOW(); END IF;
+    END $$;
+  `);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT,
@@ -195,6 +245,18 @@ async function runMigrations() {
   );`);
   await pool.query(`CREATE INDEX IF NOT EXISTS events_coord_idx ON events(coordinator_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS events_creator_idx ON events(created_by);`);
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='events' AND column_name='latitude')
+        THEN ALTER TABLE events ADD COLUMN latitude DOUBLE PRECISION; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='events' AND column_name='longitude')
+        THEN ALTER TABLE events ADD COLUMN longitude DOUBLE PRECISION; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='events' AND column_name='status')
+        THEN ALTER TABLE events ADD COLUMN status event_status NOT NULL DEFAULT 'agendado'; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='events' AND column_name='coordinator_id')
+        THEN ALTER TABLE events ADD COLUMN coordinator_id INTEGER REFERENCES users(id); END IF;
+    END $$;
+  `);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
@@ -208,6 +270,26 @@ async function runMigrations() {
   await pool.query(`CREATE INDEX IF NOT EXISTS audit_actor_idx ON audit_logs(actor_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS audit_created_idx ON audit_logs(created_at);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS audit_entity_idx ON audit_logs(entity, entity_id);`);
+  // Migração incremental do audit
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='actor_role')
+        THEN ALTER TABLE audit_logs ADD COLUMN actor_role user_role; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='user_agent')
+        THEN ALTER TABLE audit_logs ADD COLUMN user_agent TEXT; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='success')
+        THEN ALTER TABLE audit_logs ADD COLUMN success BOOLEAN NOT NULL DEFAULT TRUE; END IF;
+      -- remove colunas antigas que davam conflito
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='user_id')
+        THEN ALTER TABLE audit_logs DROP COLUMN user_id; END IF;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='old_value')
+        THEN ALTER TABLE audit_logs DROP COLUMN old_value; END IF;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='new_value')
+        THEN ALTER TABLE audit_logs DROP COLUMN new_value; END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='detail')
+        THEN ALTER TABLE audit_logs ADD COLUMN detail TEXT; END IF;
+    END $$;
+  `);
 }
 
 async function safeJson(req: Request): Promise<{ email?: string; password?: string; name?: string }> {
