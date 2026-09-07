@@ -1,47 +1,20 @@
-// Service Worker mínimo — necessário para o navegador considerar como PWA instalável
-const CACHE = "jac-v1";
-const ASSETS = [
-  "/",
-  "/login",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/images/logo.png",
-];
+// Service Worker DESATIVADO — apenas remove caches antigos e se auto-desregistra
+// Isso é necessário porque usuários que já tinham o SW antigo instalado
+// continuavam recebendo páginas velhas do cache.
+self.addEventListener("install", () => { self.skipWaiting(); });
 
-self.addEventListener("install", (e) => {
-  self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS).catch(() => {})));
+self.addEventListener("activate", async (event) => {
+  event.waitUntil((async () => {
+    // Apaga TODOS os caches antigos
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    // Desregistra este service worker
+    const regs = await self.registration.unregister();
+    // Força reload de todas as abas abertas
+    const clientsList = await self.clients.matchAll({ type: "window" });
+    for (const client of clientsList) client.navigate(client.url);
+  })());
 });
 
-self.addEventListener("activate", (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-// Estratégia: network-first para APIs (nunca cachear dados), cache-first para estáticos
-self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) {
-    // Sempre buscar na rede (dados dinâmicos)
-    e.respondWith(fetch(e.request).catch(() => new Response("offline", { status: 503 })));
-    return;
-  }
-  e.respondWith(
-    caches.match(e.request).then((cached) =>
-      cached ||
-      fetch(e.request)
-        .then((res) => {
-          const copy = res.clone();
-          if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, copy));
-          return res;
-        })
-        .catch(() => cached ?? new Response("offline", { status: 503 }))
-    )
-  );
-});
+// Nunca intercepta requisição — deixa tudo passar direto para o servidor
+self.addEventListener("fetch", () => { /* no-op */ });

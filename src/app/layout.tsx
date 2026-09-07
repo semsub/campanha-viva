@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import UnregisterSW from "@/components/UnregisterSW";
 
 export const metadata: Metadata = {
   title: "Júnior Araújo Coordenação",
@@ -16,7 +17,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className="bg-white text-[#00264D] antialiased">{children}</body>
+      <body className="bg-white text-[#00264D] antialiased">
+        <UnregisterSW />
+        {children}
+      </body>
     </html>
   );
 }
