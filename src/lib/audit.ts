@@ -2,7 +2,6 @@ import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
 import type { Role } from "@/lib/permissions";
 
-// Utilitário central de auditoria — nunca registra senha/token
 export async function audit(params: {
   actorId?: number | null;
   actorRole?: Role | null;
@@ -11,7 +10,6 @@ export async function audit(params: {
   entityId?: number | null;
   detail?: string;
   ip?: string | null;
-  userAgent?: string | null;
   success?: boolean;
 }) {
   try {
@@ -23,20 +21,12 @@ export async function audit(params: {
       entityId: params.entityId ?? null,
       detail: params.detail ?? null,
       ip: params.ip ?? null,
-      userAgent: params.userAgent ?? null,
       success: params.success ?? true,
     });
-  } catch {
-    // Não pode quebrar o fluxo principal se auditoria falhar
-  }
+  } catch { /* auditoria não pode quebrar fluxo */ }
 }
 
-export function ipOf(req: Request): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    ?? req.headers.get("x-real-ip")
-    ?? "unknown";
-}
-
-export function uaOf(req: Request): string {
-  return req.headers.get("user-agent") ?? "unknown";
-}
+export const ipOf = (req: Request) =>
+  req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+  ?? req.headers.get("x-real-ip")
+  ?? "unknown";

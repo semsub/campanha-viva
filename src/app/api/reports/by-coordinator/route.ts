@@ -14,10 +14,10 @@ export async function GET() {
   if (!isPlatformStaff(s.role)) return NextResponse.json({ error: "sem permissão" }, { status: 403 });
 
   const coords = await db.select({
-    id: users.id, name: users.name, email: users.email, active: users.active, territory: users.territory,
+    id: users.id, name: users.name, email: users.email, active: users.active,
   }).from(users).where(eq(users.role, "coordinator")).orderBy(users.name);
 
-  const report = await Promise.all(coords.map(async (c) => {
+  const list = await Promise.all(coords.map(async (c) => {
     const [nl]  = await db.select({ n: count() }).from(users).where(and(eq(users.role, "leader"), eq(users.coordinatorId, c.id))!);
     const [nv]  = await db.select({ n: count() }).from(voters).where(eq(voters.coordinatorId, c.id));
     const [nd]  = await db.select({ n: count() }).from(demands).where(eq(demands.coordinatorId, c.id));
@@ -29,5 +29,5 @@ export async function GET() {
   const [orphanV] = await db.select({ n: count() }).from(voters).where(isNull(voters.coordinatorId));
   const [orphanD] = await db.select({ n: count() }).from(demands).where(isNull(demands.coordinatorId));
 
-  return NextResponse.json({ coordinators: report, orphanVoters: orphanV.n, orphanDemands: orphanD.n });
+  return NextResponse.json({ coordinators: list, orphanVoters: orphanV.n, orphanDemands: orphanD.n });
 }

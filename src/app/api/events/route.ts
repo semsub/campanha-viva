@@ -20,20 +20,17 @@ export async function POST(req: NextRequest) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "não autenticado" }, { status: 401 });
   const b = (await req.json()) as {
-    title?: string; description?: string; location?: string;
-    latitude?: number; longitude?: number; eventDate?: string;
+    title?: string; description?: string; location?: string; eventDate?: string;
   };
   if (!b.title || !b.eventDate) return NextResponse.json({ error: "título e data obrigatórios" }, { status: 400 });
   const [row] = await db.insert(events).values({
     title: b.title.trim(),
     description: b.description ?? null,
     location: b.location ?? null,
-    latitude: typeof b.latitude === "number" ? b.latitude : null,
-    longitude: typeof b.longitude === "number" ? b.longitude : null,
     eventDate: b.eventDate,
     coordinatorId: coordinatorScopeIdForUser(s),
     createdBy: s.id,
   }).returning({ id: events.id });
-  await audit({ actorId: s.id, actorRole: s.role, action: "event_create", entity: "events", entityId: row.id, detail: `Evento: ${b.title}`, ip: ipOf(req) });
+  await audit({ actorId: s.id, actorRole: s.role, action: "event_create", entity: "events", entityId: row.id, ip: ipOf(req) });
   return NextResponse.json({ ok: true, id: row.id });
 }

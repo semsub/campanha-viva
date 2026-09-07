@@ -15,17 +15,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params;
   const uid = Number(id);
   if (!Number.isInteger(uid)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
-  const [target] = await db.select().from(users).where(eq(users.id, uid));
-  if (!target) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
-  if (!canResetPassword(s.role, target.role)) {
-    await audit({ actorId: s.id, actorRole: s.role, action: "password_reset_denied", entity: "users", entityId: uid, ip: ipOf(req), success: false });
+  const [t] = await db.select().from(users).where(eq(users.id, uid));
+  if (!t) return NextResponse.json({ error: "não encontrado" }, { status: 404 });
+  if (!canResetPassword(s.role, t.role)) {
+    await audit({ actorId: s.id, actorRole: s.role, action: "pwd_reset_denied", entity: "users", entityId: uid, ip: ipOf(req), success: false });
     return NextResponse.json({ error: "sem permissão" }, { status: 403 });
   }
   const { newPassword } = (await req.json()) as { newPassword?: string };
-  if (!newPassword || newPassword.length < 6) {
-    return NextResponse.json({ error: "A senha deve ter ao menos 6 caracteres." }, { status: 400 });
-  }
+  if (!newPassword || newPassword.length < 6) return NextResponse.json({ error: "senha mínima de 6 caracteres" }, { status: 400 });
   await db.update(users).set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() }).where(eq(users.id, uid));
-  await audit({ actorId: s.id, actorRole: s.role, action: "password_reset", entity: "users", entityId: uid, detail: `Redefiniu senha de ${target.email}`, ip: ipOf(req) });
-  return NextResponse.json({ ok: true, message: `Senha de ${target.name} redefinida.` });
+  await audit({ actorId: s.id, actorRole: s.role, action: "pwd_reset", entity: "users", entityId: uid, detail: `→ ${t.email}`, ip: ipOf(req) });
+  return NextResponse.json({ ok: true, message: `Senha de ${t.name} redefinida.` });
 }

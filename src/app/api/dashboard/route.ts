@@ -18,25 +18,24 @@ export async function GET() {
   const tf = tasksVisibilityFilter(s);
   const ef = eventsVisibilityFilter(s);
 
-  const [usersCount]     = await db.select({ n: count() }).from(users).where(uf);
-  const [votersCount]    = await db.select({ n: count() }).from(voters).where(vf);
-  const [demandsCount]   = await db.select({ n: count() }).from(demands).where(df);
-  const [pendDemands]    = await db.select({ n: count() }).from(demands).where(and(df, eq(demands.status, "pendente"))!);
-  const [doneDemands]    = await db.select({ n: count() }).from(demands).where(and(df, eq(demands.status, "concluido"))!);
-  const [tasksCount]     = await db.select({ n: count() }).from(tasks).where(tf);
-  const [openTasks]      = await db.select({ n: count() }).from(tasks).where(and(tf, eq(tasks.status, "pendente"))!);
-  const [eventsCount]    = await db.select({ n: count() }).from(events).where(ef);
+  const [u] = await db.select({ n: count() }).from(users).where(uf);
+  const [v] = await db.select({ n: count() }).from(voters).where(vf);
+  const [d] = await db.select({ n: count() }).from(demands).where(df);
+  const [pd] = await db.select({ n: count() }).from(demands).where(and(df, eq(demands.status, "pendente"))!);
+  const [cd] = await db.select({ n: count() }).from(demands).where(and(df, eq(demands.status, "concluido"))!);
+  const [t] = await db.select({ n: count() }).from(tasks).where(tf);
+  const [pt] = await db.select({ n: count() }).from(tasks).where(and(tf, eq(tasks.status, "pendente"))!);
+  const [e] = await db.select({ n: count() }).from(events).where(ef);
 
-  const roleBreakdown = await db.select({ role: users.role, n: count() }).from(users).where(uf).groupBy(users.role);
-  const byCategory    = await db.select({ category: demands.category, n: count() }).from(demands).where(df).groupBy(demands.category).orderBy(sql`count(*) DESC`);
-  const byStatus      = await db.select({ status: demands.status, n: count() }).from(demands).where(df).groupBy(demands.status);
+  const byCategory = await db.select({ category: demands.category, n: count() }).from(demands).where(df).groupBy(demands.category).orderBy(sql`count(*) DESC`);
+  const byStatus = await db.select({ status: demands.status, n: count() }).from(demands).where(df).groupBy(demands.status);
 
   return NextResponse.json({
     stats: {
-      users: usersCount.n, voters: votersCount.n,
-      demands: demandsCount.n, pendingDemands: pendDemands.n, doneDemands: doneDemands.n,
-      tasks: tasksCount.n, openTasks: openTasks.n, events: eventsCount.n,
+      users: u.n, voters: v.n,
+      demands: d.n, pendingDemands: pd.n, doneDemands: cd.n,
+      tasks: t.n, openTasks: pt.n, events: e.n,
     },
-    roleBreakdown, byCategory, byStatus,
+    byCategory, byStatus,
   });
 }

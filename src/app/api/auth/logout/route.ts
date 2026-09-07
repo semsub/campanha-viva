@@ -1,6 +1,6 @@
+import { NextRequest } from "next/server";
 import { clearSession, getSession } from "@/lib/auth";
 import { audit, ipOf } from "@/lib/audit";
-import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

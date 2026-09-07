@@ -1,116 +1,61 @@
 "use client";
-
 import { useEffect, useState, useCallback } from "react";
 import { Btn, Card, Modal, PageHeader, Field, Input, Select, Textarea, Badge, EmptyState } from "@/components/UI";
 import { DEMAND_CATEGORIES, getCategory } from "@/lib/categories";
 import { formatDate } from "@/lib/format";
 
-type Demand = {
-  id: number; title: string; description: string | null;
-  category: string; status: string; priority: string;
-  voterId: number | null; voterName: string | null;
-  createdAt: string;
-};
+type Demand = { id: number; title: string; description: string | null; category: string; status: string; priority: string; voterId: number | null; voterName: string | null; createdAt: string };
 type Voter = { id: number; name: string };
-
-const statusColor: Record<string, string> = {
-  pendente: "yellow", em_andamento: "blue", concluido: "green", cancelado: "red",
-};
-const statusLabel: Record<string, string> = {
-  pendente: "Pendente", em_andamento: "Em Andamento", concluido: "Concluído", cancelado: "Cancelado",
-};
-const priorityColor: Record<string, string> = { baixa: "slate", media: "blue", alta: "orange", urgente: "red" };
-
-const emptyForm = { title: "", description: "", category: "saude", priority: "media" as "baixa"|"media"|"alta"|"urgente", voterId: "" };
+const statusColor: Record<string, string> = { pendente: "yellow", em_andamento: "blue", concluido: "green", cancelado: "red" };
+const statusLabel: Record<string, string> = { pendente: "Pendente", em_andamento: "Em Andamento", concluido: "Concluído", cancelado: "Cancelado" };
+const empty = { title: "", description: "", category: "saude", priority: "media" as "baixa"|"media"|"alta"|"urgente", voterId: "" };
 
 export default function DemandasPage() {
   const [rows, setRows] = useState<Demand[]>([]);
   const [voters, setVoters] = useState<Voter[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
-  const [fCat, setFCat] = useState("");
-  const [fStatus, setFStatus] = useState("");
   const [openModal, setOpenModal] = useState(false);
-  const [editing, setEditing] = useState<Demand | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const p = new URLSearchParams();
-    if (q) p.set("q", q); if (fCat) p.set("category", fCat); if (fStatus) p.set("status", fStatus);
-    const r = await fetch(`/api/demands?${p}`);
-    const d = await r.json();
+    const r = await fetch("/api/demands", { credentials: "include" });
+    if (r.status === 401) { window.location.href = "/login"; return; }
+    const d = await r.json().catch(() => ({ demands: [] }));
     setRows(d.demands ?? []); setLoading(false);
-  }, [q, fCat, fStatus]);
+  }, []);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { fetch("/api/voters").then((r) => r.json()).then((d) => setVoters(d.voters ?? [])); }, []);
-
-  function openNew() { setEditing(null); setForm(emptyForm); setError(null); setOpenModal(true); }
-  function openEdit(d: Demand) {
-    setEditing(d);
-    setForm({
-      title: d.title, description: d.description ?? "",
-      category: d.category, priority: d.priority as "baixa"|"media"|"alta"|"urgente",
-      voterId: d.voterId ? String(d.voterId) : "",
-    });
-    setError(null); setOpenModal(true);
-  }
+  useEffect(() => { fetch("/api/voters", { credentials: "include" }).then((r) => r.json()).then((d) => setVoters(d.voters ?? [])); }, []);
 
   async function save(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true); setError(null);
+    e.preventDefault(); setSaving(true); setErr(null);
     try {
-      const method = editing ? "PATCH" : "POST";
-      const url = editing ? `/api/demands/${editing.id}` : "/api/demands";
-      const body: Record<string, unknown> = { ...form };
-      if (!editing) {
-        if (!form.voterId) { setError("Selecione o eleitor"); setSaving(false); return; }
-        body.voterId = Number(form.voterId);
-      } else { delete body.voterId; }
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "falha");
-      setOpenModal(false); await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "erro");
-    } finally { setSaving(false); }
+      if (!form.voterId) throw new Error("Selecione um eleitor");
+      const body = { ...form, voterId: Number(form.voterId) };
+      const r = await fetch("/api/demands", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error ?? "falha");
+      setOpenModal(false); setForm(empty); load();
+    } catch (e) { setErr(e instanceof Error ? e.message : "erro"); }
+    finally { setSaving(false); }
   }
-
   async function setStatus(d: Demand, status: string) {
-    await fetch(`/api/demands/${d.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    await fetch(`/api/demands/${d.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     load();
   }
   async function del(d: Demand) {
     if (!confirm(`Excluir "${d.title}"?`)) return;
-    const r = await fetch(`/api/demands/${d.id}`, { method: "DELETE" });
-    if (r.ok) load(); else { const j = await r.json(); alert(j.error); }
+    const r = await fetch(`/api/demands/${d.id}`, { method: "DELETE", credentials: "include" });
+    if (r.ok) load(); else alert("erro");
   }
 
   return (
     <div>
-      <PageHeader title="Demandas" subtitle={`${rows.length} demanda(s)`}
-        actions={<Btn onClick={openNew}>+ Nova demanda</Btn>} />
-
-      <Card className="p-4 mb-4">
-        <div className="grid md:grid-cols-3 gap-3">
-          <Input placeholder="Buscar por título…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Select value={fCat} onChange={(e) => setFCat(e.target.value)}>
-            <option value="">Todas as categorias</option>
-            {DEMAND_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.icon} {c.label}</option>)}
-          </Select>
-          <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-            <option value="">Todos os status</option>
-            <option value="pendente">Pendente</option>
-            <option value="em_andamento">Em andamento</option>
-            <option value="concluido">Concluído</option>
-            <option value="cancelado">Cancelado</option>
-          </Select>
-        </div>
-      </Card>
-
-      {loading ? (<Card className="p-8 text-center text-slate-400">Carregando…</Card>)
-      : rows.length === 0 ? (<Card><EmptyState title="Nenhuma demanda" hint="Clique em '+ Nova demanda'." /></Card>)
+      <PageHeader title="Demandas" subtitle={`${rows.length} demanda(s)`} actions={<Btn onClick={() => { setForm(empty); setErr(null); setOpenModal(true); }}>+ Nova demanda</Btn>} />
+      {loading ? <Card className="p-8 text-center text-slate-400">Carregando…</Card>
+      : rows.length === 0 ? <Card><EmptyState title="Nenhuma demanda" /></Card>
       : (
         <div className="grid gap-3">
           {rows.map((d) => {
@@ -118,9 +63,7 @@ export default function DemandasPage() {
             return (
               <Card key={d.id} className="p-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl" style={{ background: cat.color + "20", color: cat.color }}>
-                    {cat.icon}
-                  </div>
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl" style={{ background: cat.color + "20", color: cat.color }}>{cat.icon}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -128,12 +71,8 @@ export default function DemandasPage() {
                         <div className="flex flex-wrap items-center gap-2 mt-1">
                           <Badge color="slate">{cat.label}</Badge>
                           <Badge color={statusColor[d.status] ?? "slate"}>{statusLabel[d.status] ?? d.status}</Badge>
-                          <Badge color={priorityColor[d.priority] ?? "slate"}>{d.priority}</Badge>
-                          {d.voterName && (
-                            <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded font-semibold">
-                              👤 {d.voterName}
-                            </span>
-                          )}
+                          <Badge color="orange">{d.priority}</Badge>
+                          {d.voterName && <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded font-semibold">👤 {d.voterName}</span>}
                         </div>
                       </div>
                       <div className="text-xs text-slate-400 whitespace-nowrap">{formatDate(d.createdAt)}</div>
@@ -143,8 +82,7 @@ export default function DemandasPage() {
                       {d.status !== "em_andamento" && <button onClick={() => setStatus(d, "em_andamento")} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-semibold">▶ Iniciar</button>}
                       {d.status !== "concluido" && <button onClick={() => setStatus(d, "concluido")} className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-semibold">✓ Concluir</button>}
                       {d.status !== "cancelado" && <button onClick={() => setStatus(d, "cancelado")} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-semibold">✗ Cancelar</button>}
-                      <button onClick={() => openEdit(d)} className="text-xs text-[#003B6F] font-semibold ml-auto">Editar</button>
-                      <button onClick={() => del(d)} className="text-xs text-red-600 font-semibold">Excluir</button>
+                      <button onClick={() => del(d)} className="text-xs text-red-600 font-semibold ml-auto">Excluir</button>
                     </div>
                   </div>
                 </div>
@@ -154,16 +92,14 @@ export default function DemandasPage() {
         </div>
       )}
 
-      <Modal open={openModal} onClose={() => setOpenModal(false)} title={editing ? "Editar demanda" : "Nova demanda"}>
+      <Modal open={openModal} onClose={() => setOpenModal(false)} title="Nova demanda">
         <form onSubmit={save} className="space-y-3">
-          {!editing && (
-            <Field label="Eleitor * (obrigatório)">
-              <Select required value={form.voterId} onChange={(e) => setForm({ ...form, voterId: e.target.value })}>
-                <option value="">— selecione o eleitor —</option>
-                {voters.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </Select>
-            </Field>
-          )}
+          <Field label="Eleitor * (obrigatório)">
+            <Select required value={form.voterId} onChange={(e) => setForm({ ...form, voterId: e.target.value })}>
+              <option value="">— selecione —</option>
+              {voters.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </Select>
+          </Field>
           <Field label="Título *"><Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Categoria *">
@@ -177,8 +113,8 @@ export default function DemandasPage() {
               </Select>
             </Field>
           </div>
-          <Field label="Descrição"><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+          <Field label="Descrição"><Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          {err && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{err}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <Btn variant="ghost" onClick={() => setOpenModal(false)}>Cancelar</Btn>
             <Btn type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Btn>

@@ -1,4 +1,3 @@
-// Perfis do sistema (hierarquia piramidal)
 export type Role = "super_admin" | "admin" | "coordinator" | "leader";
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -15,11 +14,10 @@ export const ROLE_COLORS: Record<Role, string> = {
   leader: "bg-emerald-600 text-white",
 };
 
-// "Staff" = super_admin e admin veem tudo (RBAC)
-export function isPlatformStaff(role: Role): boolean {
-  return role === "super_admin" || role === "admin";
-}
+// Super e admin veem TUDO
+export const isPlatformStaff = (r: Role) => r === "super_admin" || r === "admin";
 
+// Quem pode criar quem
 export function canCreateRole(actor: Role, target: Role): boolean {
   if (actor === "super_admin") return true;
   if (actor === "admin") return target !== "super_admin";
@@ -27,29 +25,26 @@ export function canCreateRole(actor: Role, target: Role): boolean {
   return false;
 }
 
+// Quem pode editar/apagar um usuário-alvo
 export function canManageTarget(
   actor: { id: number; role: Role },
   target: { id: number; role: Role; coordinatorId: number | null },
 ): boolean {
+  if (actor.id === target.id) return false; // ninguém mexe em si mesmo aqui (só via /me)
   if (actor.role === "super_admin") return true;
   if (actor.role === "admin") return target.role !== "super_admin";
-  if (actor.role === "coordinator") {
+  if (actor.role === "coordinator")
     return target.role === "leader" && target.coordinatorId === actor.id;
-  }
   return false;
 }
 
+// Reset de senha: super pode em qualquer um; admin em todos menos super
 export function canResetPassword(actor: Role, target: Role): boolean {
   if (actor === "super_admin") return true;
   if (actor === "admin") return target !== "super_admin";
   return false;
 }
 
-// Restrição de campos sensíveis para leader
-// Leader NÃO vê: voter_title, zone, section
+// Leader NÃO enxerga estes campos de voter
 export const LEADER_HIDDEN_FIELDS = ["voterTitle", "zone", "section"] as const;
-export type SensitiveField = typeof LEADER_HIDDEN_FIELDS[number];
-
-export function canSeeVoterSensitive(role: Role): boolean {
-  return role !== "leader";
-}
+export const canSeeVoterSensitive = (r: Role) => r !== "leader";
